@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-TW" class="h-full">
+<html lang="zh-TW" class="h-full overflow-hidden">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -9,6 +9,19 @@
   <!-- Google Fonts - Noto Sans TC & Lexend for numbers -->
   <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
   <script>
+    function updateAppHeight() {
+      const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', `${viewportHeight}px`);
+    }
+
+    updateAppHeight();
+    window.addEventListener('resize', updateAppHeight);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(updateAppHeight, 250);
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateAppHeight);
+    }
     tailwind.config = {
       theme: {
         extend: {
@@ -21,10 +34,62 @@
     }
   </script>
   <style>
+    :root {
+      --app-height: 100vh;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html,
     body {
+      box-sizing: border-box;
+      width: 100%;
+      height: 100vh;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    @supports (height: 100dvh) {
+      html,
+      body {
+        height: 100dvh;
+        min-height: 100dvh;
+      }
+    }
+
+    body {
+      height: var(--app-height);
+      min-height: var(--app-height);
+      max-height: var(--app-height);
       touch-action: manipulation;
       user-select: none;
       -webkit-user-select: none;
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bottom);
+      overscroll-behavior: none;
+    }
+
+    .app-main {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+      scroll-padding-top: 0.75rem;
+      scroll-padding-bottom: calc(0.75rem + var(--safe-bottom));
+    }
+
+    .app-panel {
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+
+    @media (min-width: 768px) and (min-height: 720px) {
+      .app-panel {
+        margin-top: auto;
+        margin-bottom: auto;
+      }
     }
     
     /* 閃爍游標模擬 */
@@ -54,8 +119,14 @@
       opacity: 0;
     }
     .expand-section.open {
-      max-height: 550px;
+      max-height: min(1200px, 150dvh);
       opacity: 1;
+    }
+
+    @supports not (height: 100dvh) {
+      .expand-section.open {
+        max-height: 1200px;
+      }
     }
 
     /* 虛擬鍵盤按壓效果 */
@@ -94,7 +165,7 @@
     }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans h-screen flex flex-col justify-between overflow-hidden relative">
+<body class="bg-slate-900 text-slate-100 font-sans flex flex-col overflow-hidden relative">
 
   <!-- 頂部 LOGO 與標題列 -->
   <header class="bg-slate-800/80 backdrop-blur border-b border-slate-700 py-1.5 px-4 flex items-center justify-between z-10 shrink-0">
@@ -129,10 +200,10 @@
     </div>
   </header>
 
-  <main class="flex-grow overflow-y-auto min-h-0 px-4 py-2 w-full max-w-4xl mx-auto flex flex-col justify-start md:justify-center items-center">
+  <main class="app-main px-4 py-3 md:py-4 w-full max-w-4xl mx-auto flex flex-col justify-start md:justify-center items-center">
 
     <!--================= 設定畫面 =================-->
-    <section id="setup-panel" class="w-full max-w-md bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 md:p-5 shadow-2xl backdrop-blur-md my-auto shrink-0">
+    <section id="setup-panel" class="app-panel w-full max-w-md bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 md:p-5 shadow-2xl backdrop-blur-md shrink-0">
       <div class="text-center mb-3">
         <span class="bg-indigo-500/10 text-indigo-400 text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full border border-indigo-500/20">SET UP</span>
         <h2 class="text-base md:text-lg font-black mt-1 text-white">啟動計算大腦</h2>
@@ -207,7 +278,7 @@
     </section>
 
     <!--================= 測驗主面板 =================-->
-    <section id="game-panel" class="hidden w-full max-w-md flex flex-col justify-start py-1 gap-2 my-auto shrink-0">
+    <section id="game-panel" class="app-panel hidden w-full max-w-md flex flex-col justify-start py-1 gap-2 shrink-0">
       
       <!-- 進度條與星等 -->
       <div class="w-full bg-slate-800/40 border border-slate-700/40 rounded-xl p-2.5 shadow-lg backdrop-blur-sm shrink-0">
@@ -266,7 +337,7 @@
     </section>
 
     <!--================= 成績結算與盲點診斷面板 =================-->
-    <section id="result-panel" class="hidden w-full max-w-md bg-slate-800/70 border border-slate-700 rounded-2xl p-4 md:p-6 shadow-2xl backdrop-blur-md my-auto shrink-0">
+    <section id="result-panel" class="app-panel hidden w-full max-w-md bg-slate-800/70 border border-slate-700 rounded-2xl p-4 md:p-6 shadow-2xl backdrop-blur-md shrink-0">
       <div class="text-center mb-3">
         <span class="bg-amber-500/10 text-amber-400 text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full border border-amber-500/20">REPORT</span>
         <h2 class="text-base md:text-lg font-black mt-1 text-white">今日特訓結算報告</h2>
@@ -1051,7 +1122,7 @@
         activeEl.classList.add('border-indigo-400', 'bg-indigo-950/40', 'ring-1', 'ring-indigo-500/30', 'is-focused');
         const currentVal = activeEl.getAttribute('data-value') || '';
         activeEl.innerHTML = `${currentVal}<span class="caret-blink text-indigo-400 ml-0.5">|</span>`;
-        setTimeout(() => { activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 150);
+        setTimeout(() => { activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); }, 150);
       }
     }
 
@@ -1371,12 +1442,18 @@
       else showResults();
     }
 
+    function scrollMainToTop() {
+      const main = document.querySelector('.app-main');
+      if (main) main.scrollTo({ top: 0, behavior: 'auto' });
+    }
+
     function showResults() {
       state.endTime = Date.now();
       document.getElementById('game-panel').classList.add('hidden');
       document.getElementById('keyboard-panel').classList.add('hidden');
       document.getElementById('top-stats').classList.add('hidden');
       document.getElementById('result-panel').classList.remove('hidden');
+      scrollMainToTop();
 
       const totalElapsedMs = state.endTime - state.startTime;
       const totalSeconds = Math.max(1, Math.floor(totalElapsedMs / 1000));
@@ -1422,6 +1499,7 @@
       document.getElementById('keyboard-panel').classList.add('hidden');
       document.getElementById('top-stats').classList.add('hidden');
       document.getElementById('setup-panel').classList.remove('hidden');
+      scrollMainToTop();
       selectDifficulty(1); selectCount(10);
     }
 
@@ -1495,6 +1573,8 @@
       document.getElementById('game-panel').classList.remove('hidden');
       document.getElementById('keyboard-panel').classList.remove('hidden');
       document.getElementById('top-stats').classList.remove('hidden');
+      updateAppHeight();
+      scrollMainToTop();
 
       const diffLabels = ["基礎四則 & 指數", "一元一次方程式", "乘法公式巧算", "常用數感特訓"]; 
       document.getElementById('difficulty-label').textContent = `挑戰 ${state.difficulty}：${diffLabels[state.difficulty-1]}`;
@@ -1524,6 +1604,7 @@
       document.getElementById('stage-2-input-area').innerHTML = '';
 
       hideFeedback();
+      scrollMainToTop();
 
       const firstInput = document.querySelector('#stage-1-input-area .math-input');
       if (firstInput) {
