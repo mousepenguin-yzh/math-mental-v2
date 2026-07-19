@@ -683,9 +683,13 @@
         else { exprStr = "(x - 1)"; xVal = boxVal + 1; typeMod = -1; }
         
         const displayTerms = vals.map((v, idx) => idx === p ? exprStr : v.toString());
-        let multiplier = vals[3], otherProduct = vals[1] * vals[2];
-        if (p === 1 || p === 2) { multiplier = vals[2]; otherProduct = vals[0] * vals[3]; }
-        if (p === 3) { multiplier = vals[0]; }
+        const ratioRules = [
+          { multiplier: vals[3], otherProduct: vals[1] * vals[2] },
+          { multiplier: vals[2], otherProduct: vals[0] * vals[3] },
+          { multiplier: vals[1], otherProduct: vals[0] * vals[3] },
+          { multiplier: vals[0], otherProduct: vals[1] * vals[2] }
+        ];
+        const { multiplier, otherProduct } = ratioRules[p];
 
         let stage2Markup = "", stage2Ans = {};
         if (typeMod === 0) {
@@ -868,7 +872,7 @@
             };
           }
 
-          return {
+          const q = {
             category: 'Common_Sense_Square',
             tag: '逆向根特徵反查',
             formulaHtml: `<span class="whitespace-nowrap inline-block">x² = ${sqVal}，求 x = ？</span>`,
@@ -876,9 +880,10 @@
             stage1Ans: { ans: base.toString() },
             stage2Markup: stage2Markup,
             stage2Ans: stage2Ans,
-            stage2Hint: `觀察常數尾數 ${lastDigit}。想一想，哪些個位數的平方尾數會是這個數字？`,
-            interchangeableGroups: [['step1', 'step2']] 
+            stage2Hint: `觀察常數尾數 ${lastDigit}。想一想，哪些個位數的平方尾數會是這個數字？`
           };
+          if (lastDigit !== 0 && lastDigit !== 5) q.interchangeableGroups = [['step1', 'step2']];
+          return q;
         }
       } else if (mode === 2) {
         // --- 型式 B：高頻高次方反查 ---
