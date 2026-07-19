@@ -1333,8 +1333,11 @@
         setTimeout(() => { nextQuestion(); }, 1500);
       } else {
         showFeedback(false, stage === 1 ? "💡 計算有點小失誤！別擔心，我們一步步拆解：" : "💡 步驟數值不完全正確，再檢查一下！");
-        if (!state.errorLog[q.category]) state.errorLog[q.category] = 0;
-        state.errorLog[q.category]++;
+        if (stage === 1 && !q.errorLogged) {
+          if (!state.errorLog[q.category]) state.errorLog[q.category] = 0;
+          state.errorLog[q.category]++;
+          q.errorLogged = true;
+        }
 
         for (const [fullId, item] of Object.entries(checkedInputs)) {
           if (item.el && !item.isCorrect) {
@@ -1646,6 +1649,7 @@
       const q = state.questions[state.currentIndex];
       q.currentStage = 1; 
       q.firstTry = true;  
+      if (q.errorLogged === undefined) q.errorLogged = false;
 
       document.getElementById('topic-tag').textContent = q.tag;
       document.getElementById('main-formula').innerHTML = q.formulaHtml;
