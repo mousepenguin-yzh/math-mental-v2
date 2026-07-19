@@ -107,6 +107,42 @@
         gap: 0.5rem;
       }
     }
+
+
+    @media (max-width: 767px) and (min-height: 701px) {
+      #topic-tag {
+        font-size: 0.75rem;
+        line-height: 1rem;
+      }
+
+      #main-formula {
+        font-size: clamp(1.75rem, 7.2vw, 1.95rem);
+        line-height: 1.15;
+      }
+
+      #stage-1-container > div:first-child {
+        font-size: 0.8125rem;
+        line-height: 1.25rem;
+      }
+
+      #stage-1-container .math-input,
+      #stage-2-container .math-input {
+        min-height: 2.75rem;
+      }
+
+      #keyboard-panel button {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+        font-size: 1.0625rem;
+        line-height: 1.5rem;
+      }
+
+      #keyboard-panel button[onclick="pressKey('-')"],
+      #keyboard-panel button[onclick="pressKey('OK')"] {
+        font-size: 0.9375rem;
+        line-height: 1.25rem;
+      }
+    }
     
     /* 閃爍游標模擬 */
     @keyframes blink {
