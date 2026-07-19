@@ -683,22 +683,29 @@
         else { exprStr = "(x - 1)"; xVal = boxVal + 1; typeMod = -1; }
         
         const displayTerms = vals.map((v, idx) => idx === p ? exprStr : v.toString());
-        let multiplier = vals[3], otherProduct = vals[1] * vals[2];
-        if (p === 1 || p === 2) { multiplier = vals[2]; otherProduct = vals[0] * vals[3]; }
-        if (p === 3) { multiplier = vals[0]; }
+        const ratioRules = [
+          { multiplier: vals[3], otherProduct: vals[1] * vals[2] },
+          { multiplier: vals[2], otherProduct: vals[0] * vals[3] },
+          { multiplier: vals[1], otherProduct: vals[0] * vals[3] },
+          { multiplier: vals[0], otherProduct: vals[1] * vals[2] }
+        ];
+        const { multiplier, otherProduct } = ratioRules[p];
+        const crossMultiplyText = `${displayTerms[0]} × ${displayTerms[3]} = ${displayTerms[1]} × ${displayTerms[2]}`;
+        const unknownProductText = typeMod === 0 ? `${multiplier}x` : `${multiplier} × ${exprStr}`;
+        const solveExprText = typeMod === 0 ? `x = [input:step2:w-14]` : `${exprStr.slice(1, -1)} = ${otherProduct} ÷ ${multiplier} = [input:step2:w-14]`;
 
         let stage2Markup = "", stage2Ans = {};
         if (typeMod === 0) {
-          stage2Markup = `內外項相乘： <span class="inline-flex items-center whitespace-nowrap">${multiplier} × x = ${otherProduct}</span> <br> 求解： x = [input:ans2:w-14]`;
-          stage2Ans = { ans2: xVal.toString() };
+          stage2Markup = `交叉相乘： <span class="inline-flex items-center whitespace-nowrap">${crossMultiplyText}</span> <br> 整理： <span class="inline-flex items-center whitespace-nowrap">[input:step1:w-14] = ${unknownProductText}</span> <br> 求解： <span class="inline-flex items-center whitespace-nowrap">x = ${otherProduct} ÷ ${multiplier} = [input:step2:w-14]</span> <br> 最後答案： x = [input:ans2:w-14]`;
+          stage2Ans = { step1: otherProduct.toString(), step2: xVal.toString(), ans2: xVal.toString() };
         } else {
-          stage2Markup = `把括號看成神秘箱子： <span class="inline-flex items-center whitespace-nowrap">${multiplier} × 箱子 = ${otherProduct}</span> <br> 箱子的值： 箱子 = [input:step1:w-14] <br> 求解： <span class="inline-flex items-center whitespace-nowrap">x ${typeMod === 1 ? "+" : "-"} 1 = ${boxVal}</span> → x = [input:ans2:w-14]`;
-          stage2Ans = { step1: boxVal.toString(), ans2: xVal.toString() };
+          stage2Markup = `交叉相乘： <span class="inline-flex items-center whitespace-nowrap">${crossMultiplyText}</span> <br> 整理： <span class="inline-flex items-center whitespace-nowrap">[input:step1:w-14] = ${unknownProductText}</span> <br> 兩邊同除以 ${multiplier}： <span class="inline-flex items-center whitespace-nowrap">${solveExprText}</span> <br> 最後求 x： <span class="inline-flex items-center whitespace-nowrap">x = ${boxVal} ${typeMod === 1 ? "-" : "+"} 1 = [input:ans2:w-14]</span>`;
+          stage2Ans = { step1: otherProduct.toString(), step2: boxVal.toString(), ans2: xVal.toString() };
         }
         return {
           category: 'Equation_Ratio', tag: '比與比例式', formulaHtml: `${displayTerms[0]} : ${displayTerms[1]} = ${displayTerms[2]} : ${displayTerms[3]}`,
           stage1Markup: `x = [input:ans:w-14]`, stage1Ans: { ans: xVal.toString() }, stage2Markup: stage2Markup, stage2Ans: stage2Ans,
-          stage2Hint: "請運用比例式心算法則：「外項相乘 = 內項相乘」喔！"
+          stage2Hint: "比例式可用「外項乘積等於內項乘積」：先寫出完整交叉相乘式，再用除法求出未知式的值。"
         };
       }
     }
@@ -868,7 +875,7 @@
             };
           }
 
-          return {
+          const q = {
             category: 'Common_Sense_Square',
             tag: '逆向根特徵反查',
             formulaHtml: `<span class="whitespace-nowrap inline-block">x² = ${sqVal}，求 x = ？</span>`,
@@ -876,9 +883,10 @@
             stage1Ans: { ans: base.toString() },
             stage2Markup: stage2Markup,
             stage2Ans: stage2Ans,
-            stage2Hint: `觀察常數尾數 ${lastDigit}。想一想，哪些個位數的平方尾數會是這個數字？`,
-            interchangeableGroups: [['step1', 'step2']] 
+            stage2Hint: `觀察常數尾數 ${lastDigit}。想一想，哪些個位數的平方尾數會是這個數字？`
           };
+          if (lastDigit !== 0 && lastDigit !== 5) q.interchangeableGroups = [['step1', 'step2']];
+          return q;
         }
       } else if (mode === 2) {
         // --- 型式 B：高頻高次方反查 ---
