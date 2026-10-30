@@ -2,28 +2,27 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createApp, question } = require('./helpers/app.cjs');
 
-// These execute the desired assertions. Node reports failures as TODO without
-// failing CI. Remove each todo option when fixing its documented bug.
-test('BUG-01 duplicate successful submissions must award only one star', { todo: 'submission lock missing' }, () => {
+// BUG-01 to BUG-04 are required regressions; remaining mathematics bugs use TODO.
+test('BUG-01 duplicate successful submissions must award only one star', () => {
   const app = createApp(); app.mount([question(), question(), question()]);
   app.fill({ ans: '5' }); app.context.checkAnswer(); app.context.checkAnswer();
   assert.equal(app.state.goldenStars, 1);
 });
 
-test('BUG-02 duplicate successful submissions must advance exactly one question', { todo: 'multiple nextQuestion timers' }, () => {
+test('BUG-02 duplicate successful submissions must advance exactly one question', () => {
   const app = createApp(); app.mount([question(), question(), question()]);
   app.fill({ ans: '5' }); app.context.checkAnswer(); app.context.checkAnswer(); app.tick(1500);
   assert.equal(app.state.currentIndex, 1);
 });
 
-test('BUG-03 old success timer must not advance a new session', { todo: 'session timers not cancelled' }, () => {
+test('BUG-03 old success timer must not advance a new session', () => {
   const app = createApp(); app.mount([question(), question()]);
   app.fill({ ans: '5' }); app.context.checkAnswer();
   app.context.confirmExit(); app.context.startGame(); app.tick(1500);
   assert.equal(app.state.currentIndex, 0);
 });
 
-test('BUG-04 old correction timer must not inject old inputs into a new session', { todo: 'correction timer not cancelled' }, () => {
+test('BUG-04 old correction timer must not inject old inputs into a new session', () => {
   const app = createApp(); app.mount([question()]);
   app.fill({ ans: '9' }); app.context.checkAnswer();
   app.context.confirmExit(); app.context.startGame(); app.tick(600);

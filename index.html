@@ -550,9 +550,39 @@
       questions: [],
       activeInputId: null,
       errorLog: {},
+      isPlaying: false,
+      exitModalOpen: false,
       startTime: null, 
       endTime: null    
     };
+
+    // All question-related callbacks belong to the current lifecycle version.
+    let taskVersion = 0;
+    const gameTimers = new Set();
+    let feedbackTimeout = null;
+
+    function setGameTimeout(callback, delay) {
+      const version = taskVersion;
+      const timer = setTimeout(() => {
+        if (version !== taskVersion) return;
+        gameTimers.delete(timer);
+        callback();
+      }, delay);
+      gameTimers.add(timer);
+      return timer;
+    }
+
+    function clearGameTasks() {
+      taskVersion++;
+      gameTimers.forEach(timer => clearTimeout(timer));
+      gameTimers.clear();
+      feedbackTimeout = null;
+    }
+
+    function canAnswer() {
+      const q = state.questions[state.currentIndex];
+      return state.isPlaying && !state.exitModalOpen && q && q.answerState === 'answering';
+    }
 
     function randInt(min, max, avoid = []) {
       let num;
@@ -1163,6 +1193,7 @@
     }
 
     function focusInput(inputId) {
+      if (!canAnswer()) return;
       if (state.activeInputId) {
         const prev = document.querySelector(`[data-input-id="${state.activeInputId}"]`);
         if (prev) {
@@ -1182,11 +1213,12 @@
         activeEl.classList.add('border-indigo-400', 'bg-indigo-950/40', 'ring-1', 'ring-indigo-500/30', 'is-focused');
         const currentVal = activeEl.getAttribute('data-value') || '';
         activeEl.innerHTML = `${currentVal}<span class="caret-blink text-indigo-400 ml-0.5">|</span>`;
-        setTimeout(() => { activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); }, 150);
+        setGameTimeout(() => { activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); }, 150);
       }
     }
 
     function pressKey(key) {
+      if (!canAnswer()) return;
       if (!state.activeInputId) return;
       const activeEl = document.querySelector(`[data-input-id="${state.activeInputId}"]`);
       if (!activeEl) return;
@@ -1214,6 +1246,7 @@
     }
 
     document.addEventListener('keydown', (e) => {
+      if (!canAnswer()) return;
       if (document.getElementById('game-panel').classList.contains('hidden')) return;
       
       if (e.key >= '0' && e.key <= '9') pressKey(e.key);
@@ -1225,6 +1258,7 @@
 
     // --- 核心判定演算法 ---
     function checkAnswer() {
+      if (!canAnswer()) return;
       const q = state.questions[state.currentIndex];
       const stage = q.currentStage;
       
@@ -1314,6 +1348,7 @@
       }
 
       if (isAllCorrect) {
+        q.answerState = 'completed';
         const successMsg = stage === 1 
           ? `🎉 答對了！你太棒了！${unsimplifiedText}` 
           : `🎉 觀念完全正確，訂正完成！${unsimplifiedText}`;
@@ -1330,7 +1365,7 @@
         
         if (stage === 1 && q.firstTry) state.goldenStars++;
         state.activeInputId = null;
-        setTimeout(() => { nextQuestion(); }, 1500);
+        setGameTimeout(() => { nextQuestion(); }, 1500);
       } else {
         showFeedback(false, stage === 1 ? "💡 計算有點小失誤！別擔心，我們一步步拆解：" : "💡 步驟數值不完全正確，再檢查一下！");
         if (stage === 1 && !q.errorLogged) {
@@ -1343,13 +1378,16 @@
           if (item.el && !item.isCorrect) {
             item.el.classList.remove('border-indigo-400');
             item.el.classList.add('border-rose-500', 'bg-rose-950/20', 'text-rose-300', 'shake-anim');
-            setTimeout(() => { item.el.classList.remove('shake-anim'); }, 300);
+            setGameTimeout(() => { item.el.classList.remove('shake-anim'); }, 300);
           }
         }
         q.firstTry = false;
         if (stage === 1) {
-          setTimeout(() => {
+          q.answerState = 'opening-correction';
+          state.activeInputId = null;
+          setGameTimeout(() => {
             q.currentStage = 2;
+            q.answerState = 'answering';
             document.getElementById('stage-2-hint').innerHTML = q.stage2Hint;
             document.getElementById('stage-2-input-area').innerHTML = parseMarkup(q.stage2Markup, state.currentIndex);
             const stage2Container = document.getElementById('stage-2-container');
@@ -1359,7 +1397,7 @@
               drawAreaModel(q.a, q.b);
             }
 
-            setTimeout(() => {
+            setGameTimeout(() => {
               const nextInput = document.querySelector('#stage-2-input-area .math-input');
               if (nextInput) {
                 focusInput(nextInput.getAttribute('data-input-id'));
@@ -1482,7 +1520,6 @@
       ctx.fillText(params.sideC, (xB + xC) / 2 + 12, (yB + yC) / 2 - 12);
     }
 
-    let feedbackTimeout = null;
     function showFeedback(isCorrect, text) {
       const banner = document.getElementById('feedback-banner');
       banner.classList.remove('hidden', 'bg-emerald-500/20', 'text-emerald-400', 'border-emerald-500/30', 'bg-rose-500/20', 'text-rose-400', 'border-rose-500/30', 'scale-90', 'opacity-0');
@@ -1490,10 +1527,16 @@
       else banner.classList.add('bg-rose-950/95', 'text-rose-300', 'border-rose-500', 'scale-100', 'opacity-100');
       banner.innerHTML = text;
 
-      if (feedbackTimeout) clearTimeout(feedbackTimeout);
-      feedbackTimeout = setTimeout(() => {
+      if (feedbackTimeout) {
+        clearTimeout(feedbackTimeout);
+        gameTimers.delete(feedbackTimeout);
+      }
+      feedbackTimeout = setGameTimeout(() => {
         banner.classList.add('opacity-0', 'scale-90');
-        setTimeout(() => banner.classList.add('hidden'), 200);
+        feedbackTimeout = setGameTimeout(() => {
+          feedbackTimeout = null;
+          banner.classList.add('hidden');
+        }, 200);
       }, 3500); 
     }
 
@@ -1511,6 +1554,11 @@
     }
 
     function showResults() {
+      clearGameTasks();
+      state.isPlaying = false;
+      state.activeInputId = null;
+      hideExitModal();
+      hideFeedback();
       state.endTime = Date.now();
       document.getElementById('game-panel').classList.add('hidden');
       document.getElementById('keyboard-panel').classList.add('hidden');
@@ -1557,6 +1605,11 @@
     }
 
     function resetSetup() {
+      clearGameTasks();
+      state.isPlaying = false;
+      state.activeInputId = null;
+      hideExitModal();
+      hideFeedback();
       document.getElementById('result-panel').classList.add('hidden');
       document.getElementById('game-panel').classList.add('hidden');
       document.getElementById('keyboard-panel').classList.add('hidden');
@@ -1621,18 +1674,37 @@
       }
     }
 
-    function triggerExitCheck() { document.getElementById('exit-modal').classList.remove('hidden'); }
-    function hideExitModal() { document.getElementById('exit-modal').classList.add('hidden'); }
-    function confirmExit() { hideExitModal(); resetSetup(); }
+    function triggerExitCheck() {
+      if (!state.isPlaying) return;
+      state.exitModalOpen = true;
+      document.getElementById('exit-modal').classList.remove('hidden');
+    }
+    function hideExitModal() {
+      state.exitModalOpen = false;
+      document.getElementById('exit-modal').classList.add('hidden');
+      if (canAnswer() && !state.activeInputId) {
+        const q = state.questions[state.currentIndex];
+        const input = document.querySelector(`#stage-${q.currentStage}-input-area .math-input`);
+        if (input) focusInput(input.getAttribute('data-input-id'));
+      }
+    }
+    function confirmExit() { resetSetup(); }
 
     function startGame() {
+      clearGameTasks();
+      state.isPlaying = false;
+      state.activeInputId = null;
+      hideExitModal();
       state.currentIndex = 0;
       state.goldenStars = 0;
       state.errorLog = {};
       state.questions = buildQuestions(state.difficulty, state.qCount);
-      state.startTime = Date.now(); 
+      state.startTime = Date.now();
+      state.endTime = null;
+      state.isPlaying = true;
 
       document.getElementById('setup-panel').classList.add('hidden');
+      document.getElementById('result-panel').classList.add('hidden');
       document.getElementById('game-panel').classList.remove('hidden');
       document.getElementById('keyboard-panel').classList.remove('hidden');
       document.getElementById('top-stats').classList.remove('hidden');
@@ -1646,7 +1718,9 @@
     }
 
     function loadQuestion() {
+      clearGameTasks();
       const q = state.questions[state.currentIndex];
+      q.answerState = 'answering';
       q.currentStage = 1; 
       q.firstTry = true;  
       if (q.errorLogged === undefined) q.errorLogged = false;
@@ -1656,7 +1730,7 @@
 
       // 步驟四：第一階段主動態繪製直角三角形
       if (q.category === 'Common_Sense_Geometry' && q.geomParams) {
-        setTimeout(() => {
+        setGameTimeout(() => {
           drawQuestionTriangle(q.geomParams);
         }, 20);
       }

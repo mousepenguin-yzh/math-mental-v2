@@ -52,10 +52,14 @@ function createApp(seed = 0x5eed) {
   const ids = new Map([...html.matchAll(/\bid="([^"]+)"[^>]*>/g)]
     .map((m) => [m[1], new Element({ class: /\bclass="([^"]*)"/.exec(m[0])?.[1] || '' })]));
   const main = new Element();
+  const listeners = new Map();
   const document = {
     documentElement: new Element(),
     getElementById: (id) => ids.get(id) || null,
-    addEventListener() {},
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
     querySelector(selector) {
       if (selector === '.app-main') return main;
       const area = /^#([\w-]+) \.math-input$/.exec(selector);
@@ -86,6 +90,8 @@ function createApp(seed = 0x5eed) {
   const state = vm.runInContext('state', context);
   return {
     context, state, document,
+    key(key) { (listeners.get('keydown') || []).forEach(listener => listener({ key })); },
+    pendingCallbacks: () => [...timers.values()].map(timer => timer.fn),
     el: (id) => { assert.ok(ids.has(id), `Missing element ${id}`); return ids.get(id); },
     tick(ms) {
       const end = now + ms;
@@ -108,7 +114,8 @@ function createApp(seed = 0x5eed) {
       }
     },
     mount(questions) {
-      Object.assign(state, { questions, qCount: questions.length, currentIndex: 0, goldenStars: 0, errorLog: {}, startTime: now });
+      Object.assign(state, { questions, qCount: questions.length, currentIndex: 0, goldenStars: 0, errorLog: {}, startTime: now, isPlaying: true, exitModalOpen: false });
+      ids.get('game-panel').classList.remove('hidden');
       context.loadQuestion();
     },
   };
