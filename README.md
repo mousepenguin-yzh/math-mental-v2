@@ -51,6 +51,12 @@
 
 * 增加歷次答題及錯題紀錄。
 * 顯示更完整的各題型錯題明細。
-* 建立正式的題目產生器自動化測試。
+* 持續擴充題目產生器自動化測試與修正已記錄的 Bug。
 * 依實際使用回饋調整題目難度與分布。
 * 視專案規模拆分 HTML、CSS 及 JavaScript。
+
+## 本機測試
+
+安裝 Node.js 24 LTS 後執行 `npm test`，不需安裝其他套件。GitHub Actions 會在 PR 與 main 更新時執行相同測試。
+
+測試範圍、執行方式、限制及尚待修正的 Bug 請見 [tests/README.md](tests/README.md)。已知 Bug 使用可執行的 TODO 測試管理，不會阻擋其他正常功能的 CI 驗證。
