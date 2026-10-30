@@ -219,4 +219,3 @@ test('seed 0x5eed: independent mathematics, answer fields and representative bra
   for (const paren of [true, false]) for (const exp of [2, 3]) assert.ok(coverage.has(`exponent:${paren}:${exp}`));
   assert.ok(coverage.has('multiply')); assert.ok(coverage.has('divide'));
 });
-
