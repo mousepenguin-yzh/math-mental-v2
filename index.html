@@ -310,6 +310,16 @@
             </div>
             <div class="w-3.5 h-3.5 rounded-full border border-slate-600 flex items-center justify-center check-dot shrink-0 ml-2"></div>
           </button>
+          <button onclick="selectDifficulty('pythagorean')" id="btn-diff-pythagorean" class="diff-btn w-full text-left p-2 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-700/30 transition-all flex items-center justify-between group">
+            <div class="flex items-center space-x-2.5 min-w-0">
+              <div class="bg-emerald-500/10 text-emerald-400 w-7 h-7 rounded-lg flex items-center justify-center shrink-0"><span class="font-math font-black text-xs">05</span></div>
+              <div class="min-w-0">
+                <h3 class="font-bold text-sm text-slate-100 group-hover:text-white">畢氏定理特訓</h3>
+                <p class="text-[11px] text-slate-300">平方關係、未知邊長、生活應用</p>
+              </div>
+            </div>
+            <div class="w-3.5 h-3.5 rounded-full border border-slate-600 flex items-center justify-center check-dot shrink-0 ml-2"></div>
+          </button>
         </div>
       </div>
 
@@ -1153,7 +1163,143 @@
       }
     }
 
+    // V1 bank: [primitive legs/hypotenuse, scale]. Band measures arithmetic load.
+    // There are only 11 integer triangles with hypotenuse <= 30. The single 34
+    // exception supplies the 12th distinct direct-hypotenuse item in a 30-item test.
+    const pythagoreanBank = {
+      basic: [[3,4,5,1], [3,4,5,2], [3,4,5,3], [5,12,13,1]],
+      medium: [[3,4,5,4], [3,4,5,5], [5,12,13,2], [8,15,17,1]],
+      challenge: [[3,4,5,6], [7,24,25,1], [20,21,29,1], [8,15,17,2]]
+    };
+
+    function shuffled(items) {
+      const result = [...items];
+      for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+      }
+      return result;
+    }
+
+    function makePythagoreanQuestion(entry, difficultyBand, presentationType, unknown, scenario = null) {
+      const [a, b, c, scale] = entry;
+      const sides = { legA: a * scale, legB: b * scale, hypotenuse: c * scale };
+      const solveType = unknown === 'hypotenuse' ? 'hypotenuse' : 'leg';
+      const adding = solveType === 'hypotenuse';
+      const knownLeg = unknown === 'legA' ? sides.legB : sides.legA;
+      const first = adding ? sides.legA : sides.hypotenuse;
+      const second = adding ? sides.legB : knownLeg;
+      const operator = adding ? '+' : '−';
+      const answer = sides[unknown];
+      const unit = '公尺';
+      const label = side => side === unknown ? 'x' : sides[side];
+      const geomParams = {
+        sideA: label('legA'), sideB: label('legB'), sideC: label('hypotenuse'), unknown
+      };
+      let prompt, recognition;
+      if (scenario === 'rectangle') {
+        prompt = adding
+          ? `一塊長方形地板的長為 ${sides.legB} 公尺、寬為 ${sides.legA} 公尺，對角線長 x 是多少公尺？`
+          : `一塊長方形地板的對角線長 ${sides.hypotenuse} 公尺，${unknown === 'legA' ? '長' : '寬'}為 ${knownLeg} 公尺，另一邊長 x 是多少公尺？`;
+        recognition = '長方形相鄰兩邊互相垂直，是兩股；對角線是斜邊。';
+      } else if (scenario === 'ladder') {
+        prompt = adding
+          ? `梯子靠在與地面垂直的牆上，底端離牆 ${sides.legB} 公尺，頂端離地 ${sides.legA} 公尺，梯長 x 是多少公尺？`
+          : unknown === 'legA'
+            ? `長 ${sides.hypotenuse} 公尺的梯子靠在與地面垂直的牆上，底端離牆 ${sides.legB} 公尺，頂端離地高度 x 是多少公尺？`
+            : `長 ${sides.hypotenuse} 公尺的梯子靠在與地面垂直的牆上，頂端離地 ${sides.legA} 公尺，底端離牆距離 x 是多少公尺？`;
+        recognition = '牆面高度與地面距離是互相垂直的兩股；梯子是斜邊。';
+      } else if (scenario === 'journey') {
+        prompt = adding
+          ? `小安先向東走 ${sides.legB} 公尺，再向北走 ${sides.legA} 公尺，起點到終點的直線距離 x 是多少公尺？`
+          : `小安先向東走${unknown === 'legB' ? ' x' : ` ${sides.legB}`} 公尺，再向北走${unknown === 'legA' ? ' x' : ` ${sides.legA}`} 公尺，起點到終點的直線距離為 ${sides.hypotenuse} 公尺，x 是多少公尺？`;
+        recognition = '向東與向北的路段互相垂直，是兩股；起終點直線距離是斜邊。';
+      } else {
+        prompt = adding
+          ? `直角三角形的兩股為 ${sides.legA}、${sides.legB} 公尺，求斜邊 x。`
+          : `直角三角形的斜邊為 ${sides.hypotenuse} 公尺，一股為 ${knownLeg} 公尺，求另一股 x。`;
+        recognition = '直角對面的邊是斜邊，也是三邊中最長的一邊。';
+      }
+      const bandLabels = { basic: '基礎', medium: '中等', challenge: '挑戰' };
+      return {
+        concept: 'pythagorean', presentationType, solveType, difficultyBand,
+        sides, unknown, scenario, unit, familyId: `${a}-${b}-${c}`, scale,
+        tripleId: Object.values(sides).join('-'),
+        questionKey: `${Object.values(sides).join('-')}:${unknown}:${scenario || 'triangle'}`,
+        category: scenario ? 'Pythagorean_Model' : adding ? 'Pythagorean_Add' : 'Pythagorean_Subtract',
+        tag: `畢氏定理・${bandLabels[difficultyBand]}・${scenario ? '生活應用' : adding ? '求斜邊' : '求另一股'}`,
+        formulaHtml: `<div class="w-full text-sm leading-relaxed text-left font-sans">${prompt}</div>
+          <figure class="w-full flex flex-col items-center"><canvas id="q-geom-canvas" width="260" height="155" role="img" aria-label="${prompt}" style="max-width:100%;height:auto"></canvas>
+          <figcaption class="text-[11px] text-slate-400 font-sans">邊長單位：公尺。示意圖，非依比例繪製</figcaption></figure>`,
+        geomParams,
+        stage1Markup: 'x = [input:ans:w-20] <span class="text-sm">公尺</span>',
+        stage1Ans: { ans: String(answer) },
+        stage2Hint: `${recognition}${adding ? '求斜邊，要把兩股的平方相加。' : '求另一股，要用斜邊的平方減去已知股的平方。'}先求 x²，再找出平方等於它的正邊長。`,
+        stage2Markup: `<div class="w-full text-center leading-relaxed">x² = ${first}² ${operator} ${second}²<br>x² = ${first * first} ${operator} ${second * second}</div>
+          <div class="flex items-center flex-wrap justify-center gap-1">平方${adding ? '和' : '差'}：x² = [input:squared:w-20]</div>
+          <div class="flex items-center flex-wrap justify-center gap-1">實際邊長：x = [input:ans2:w-20] 公尺</div>`,
+        stage2Ans: { squared: String(answer * answer), ans2: String(answer) }
+      };
+    }
+
+    function buildPythagoreanQuestions(count) {
+      // Rows: direct hypotenuse, direct leg, application; columns: basic/medium/challenge.
+      // Both marginal distributions are exact, while each cell fits the finite bank.
+      const quotas = {
+        10: [[2,1,1], [1,2,1], [1,1,0]],
+        20: [[3,3,2], [3,3,2], [2,2,0]],
+        30: [[4,4,4], [6,5,1], [2,3,1]]
+      }[count];
+      if (!quotas) throw new Error('畢氏特訓題數須為 10、20 或 30');
+      const types = ['hypotenuse', 'leg', 'application'];
+      const bands = ['basic', 'medium', 'challenge'];
+      const slots = [];
+      quotas.forEach((row, i) => row.forEach((n, j) => {
+        for (let k = 0; k < n; k++) slots.push([types[i], bands[j]]);
+      }));
+      const selected = [], used = new Set();
+      const tripleUse = {}, familyUse = {}, sceneUse = {}, solveUse = {}, legUse = {};
+      for (const [type, band] of shuffled(slots)) {
+        const candidates = [];
+        for (const entry of pythagoreanBank[band]) {
+          const unknowns = type === 'hypotenuse' ? ['hypotenuse'] : type === 'leg' ? ['legA', 'legB'] : ['hypotenuse', 'legA', 'legB'];
+          for (const unknown of unknowns) {
+            for (const scene of type === 'application' ? ['rectangle', 'ladder', 'journey'] : [null]) {
+              const q = makePythagoreanQuestion(entry, band, type, unknown, scene);
+              if (!used.has(q.questionKey)) candidates.push(q);
+            }
+          }
+        }
+        const score = q => (tripleUse[q.tripleId] || 0) * 4 + (familyUse[q.familyId] || 0)
+          + (q.scenario ? (sceneUse[q.scenario] || 0) * 100 + (solveUse[q.solveType] || 0) * 10 : 0)
+          + (type === 'leg' ? (legUse[q.unknown] || 0) * 100 : 0);
+        const q = shuffled(candidates).sort((a, b) => score(a) - score(b))[0];
+        if (!q) throw new Error('畢氏題庫配額不足');
+        selected.push(q); used.add(q.questionKey);
+        if (type === 'leg') legUse[q.unknown] = (legUse[q.unknown] || 0) + 1;
+        tripleUse[q.tripleId] = (tripleUse[q.tripleId] || 0) + 1;
+        familyUse[q.familyId] = (familyUse[q.familyId] || 0) + 1;
+        if (q.scenario) {
+          sceneUse[q.scenario] = (sceneUse[q.scenario] || 0) + 1;
+          solveUse[q.solveType] = (solveUse[q.solveType] || 0) + 1;
+        }
+      }
+      // Greedy ordering with random ties: disperse the same family, type and scene.
+      const remaining = shuffled(selected), ordered = [];
+      while (remaining.length) {
+        const previous = ordered[ordered.length - 1];
+        const adjacency = q => !previous ? 0 :
+          (q.tripleId === previous.tripleId ? 20 : 0) + (q.familyId === previous.familyId ? 4 : 0)
+          + (q.presentationType === previous.presentationType ? 2 : 0)
+          + (q.scenario && q.scenario === previous.scenario ? 3 : 0);
+        remaining.sort((a, b) => adjacency(a) - adjacency(b));
+        ordered.push(remaining.shift());
+      }
+      return ordered;
+    }
+
     function buildQuestions(difficulty, count) {
+      if (difficulty === 'pythagorean') return buildPythagoreanQuestions(count);
       const qs = [];
       for (let i = 0; i < count; i++) {
         if (difficulty === 1) qs.push(generateDiff1Question(i));
@@ -1520,6 +1666,48 @@
       ctx.fillText(params.sideC, (xB + xC) / 2 + 12, (yB + yC) / 2 - 12);
     }
 
+    // Reuse triangle labels; scene decorations retain the same side mapping.
+    function drawPythagoreanScene(params, scenario) {
+      const canvas = document.getElementById('q-geom-canvas');
+      if (!canvas) return;
+      drawQuestionTriangle(params);
+      const ctx = canvas.getContext('2d');
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#94a3b8';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'left';
+      if (scenario === 'rectangle') {
+        // Fourth vertex closes the rectangle; the diagonal is the hypotenuse.
+        ctx.beginPath(); ctx.moveTo(50, 30); ctx.lineTo(150, 30); ctx.lineTo(150, 100); ctx.stroke();
+        ctx.fillText('長方形地板', 163, 40);
+        ctx.fillText('對角線', 163, 65);
+      } else if (scenario === 'ladder') {
+        ctx.beginPath(); ctx.moveTo(44, 16); ctx.lineTo(44, 106); ctx.lineTo(170, 106); ctx.stroke();
+        // Parallel rail and a few rungs identify the diagonal as a ladder.
+        ctx.beginPath(); ctx.moveTo(56, 25); ctx.lineTo(156, 95);
+        for (let i = 1; i < 5; i++) {
+          const x = 50 + i * 20, y = 30 + i * 14;
+          ctx.moveTo(x, y); ctx.lineTo(x + 6, y - 5);
+        }
+        ctx.strokeStyle = '#fbbf24'; ctx.stroke();
+        ctx.fillText('牆', 20, 22); ctx.fillText('地面', 173, 110); ctx.fillText('梯子', 166, 50);
+      } else if (scenario === 'journey') {
+        // Reflect the path across its vertical centre: east, then north.
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(45, 100); ctx.lineTo(175, 100); ctx.lineTo(175, 30); ctx.stroke();
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(45, 100); ctx.lineTo(175, 30); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(163, 100); ctx.lineTo(163, 88); ctx.lineTo(175, 88); ctx.stroke();
+        ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(params.sideB, 110, 120); ctx.fillText(params.sideA, 195, 65); ctx.fillText(params.sideC, 100, 52);
+        ctx.font = '11px sans-serif';
+        ctx.fillText('起點', 28, 85); ctx.fillText('終點', 175, 17);
+        ctx.fillText('向東 →', 110, 140); ctx.fillText('向北 ↑', 230, 85);
+      }
+    }
+
     function showFeedback(isCorrect, text) {
       const banner = document.getElementById('feedback-banner');
       banner.classList.remove('hidden', 'bg-emerald-500/20', 'text-emerald-400', 'border-emerald-500/30', 'bg-rose-500/20', 'text-rose-400', 'border-rose-500/30', 'scale-90', 'opacity-0');
@@ -1589,6 +1777,9 @@
       for (const [cat, count] of Object.entries(state.errorLog)) { if (count > maxErrors) { maxErrors = count; worstCategory = cat; } }
 
       const diagnosisMap = {
+        'Pythagorean_Add': '💡 畢氏定理練習重點：求斜邊時，先把兩股分別平方再相加，得到的是斜邊的平方；最後還要找出對應的正邊長。',
+        'Pythagorean_Subtract': '💡 畢氏定理練習重點：求另一股時，要用斜邊的平方減去已知股的平方；平方差是未知股的平方，還不是邊長。',
+        'Pythagorean_Model': '💡 生活應用練習重點：先找互相垂直的兩股，直角對面才是斜邊。求斜邊用平方相加，求另一股用平方相減，再由平方求正邊長。',
         'Arithmetic_Sign': "💡 今日計算盲點：你常在「正負號變號」或「負負得正」上稍微有些粗心。遇到負數乘除 or 減去負數時，請務必先在大腦中「鎖定正負號」再計算。只要跨過這個小門檻，你的速度跟精準度會非常驚人！",
         'Arithmetic_Fraction': "💡 今日計算盲點：你的通分觀念很好，但偶爾在「最後答案的約分」上稍微大意。下次算完分數時，花半秒確認一下分子 and 分母是否還能繼續約分喔！",
         'Exponent_Trap': "💡 今日計算盲點：小心掉入了指數記法陷阱！請特別記住：「負數的外側平方 (-a)²」是包含負號一起乘；而「沒有括號的負數平方 -a²」則是算完平方後再補上負號。看清題目有沒有括號是致勝關鍵！",
@@ -1711,8 +1902,12 @@
       updateAppHeight();
       scrollMainToTop();
 
-      const diffLabels = ["基礎四則 & 指數", "一元一次方程式", "乘法公式巧算", "常用數感特訓"]; 
-      document.getElementById('difficulty-label').textContent = `挑戰 ${state.difficulty}：${diffLabels[state.difficulty-1]}`;
+      const challengeLabels = {
+        1: '挑戰 1：基礎四則 & 指數', 2: '挑戰 2：一元一次方程式',
+        3: '挑戰 3：乘法公式巧算', 4: '挑戰 4：常用數感特訓',
+        pythagorean: '畢氏定理特訓'
+      };
+      document.getElementById('difficulty-label').textContent = challengeLabels[state.difficulty];
       
       loadQuestion();
     }
@@ -1729,9 +1924,10 @@
       document.getElementById('main-formula').innerHTML = q.formulaHtml;
 
       // 步驟四：第一階段主動態繪製直角三角形
-      if (q.category === 'Common_Sense_Geometry' && q.geomParams) {
+      if (q.geomParams) {
         setGameTimeout(() => {
-          drawQuestionTriangle(q.geomParams);
+          if (q.scenario) drawPythagoreanScene(q.geomParams, q.scenario);
+          else drawQuestionTriangle(q.geomParams);
         }, 20);
       }
 
