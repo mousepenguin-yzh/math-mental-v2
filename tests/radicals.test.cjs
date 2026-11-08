@@ -213,3 +213,168 @@ for (const raw of ['2√5', '2√3']) test(`typed ${raw}: exit/restart isolates 
   assert.equal(app.state.currentIndex, 0); assert.equal(app.state.goldenStars, 0);
   assert.equal(app.el('stage-2-container').classList.contains('open'), false);
 });
+
+test('radical UI: keyboard aux key switches by field spec between radical, integer, and legacy fields', () => {
+  const app = createApp();
+  app.mount([
+    question({
+      formulaHtml: '化簡 √20',
+      stage1Markup: '[input:ans]',
+      stage1Ans: { ans: radical(2, 5) },
+      stage2Markup: '[input:step1] [input:ans2]',
+      stage2Ans: { step1: { type: 'integer', expected: 4 }, ans2: radical(2, 5) },
+    }),
+    question({
+      stage1Markup: '[input:dec]',
+      stage1Ans: { dec: '0.375' },
+    }),
+  ]);
+  const aux = app.el('key-aux');
+  const stage1Input = app.document.querySelector('[data-input-id="q_0_ans"]');
+  assert.equal(aux.getAttribute('data-key'), '√');
+  assert.equal(aux.getAttribute('data-state'), 'enabled');
+  assert.equal(aux.getAttribute('aria-disabled'), 'false');
+  assert.equal(aux.disabled, false);
+  assert.equal(aux.textContent, '√');
+  assert.equal(stage1Input.getAttribute('data-input-mode'), 'radical');
+  assert.match(app.el('main-formula').innerHTML, /class="rad-group".*<span class="rad-bar">20<\/span>/);
+
+  // In radical mode, '.' is ignored and aux button / 'r' / 'R' inserts at most one '√'
+  app.key('.'); app.context.pressKey('.');
+  assert.equal(stage1Input.getAttribute('data-value'), null);
+  app.context.pressAuxKey();
+  assert.equal(stage1Input.getAttribute('data-value'), '√');
+  assert.match(stage1Input.innerHTML, /rad-bar-empty/);
+  // Duplicate radical is prevented and keeps current value
+  app.key('r'); app.key('R'); app.context.pressKey('√');
+  assert.equal(stage1Input.getAttribute('data-value'), '√');
+  assert.match(app.el('feedback-banner').innerHTML, /已經輸入過根號/);
+
+  // Clear and enter wrong answer to expand stage 2 with integer step + radical final answer
+  app.key('Escape');
+  assert.equal(stage1Input.getAttribute('data-value'), '');
+  app.key('9'); app.key('Enter');
+  app.tick(600);
+  assert.equal(app.state.questions[0].currentStage, 2);
+  app.tick(250);
+  // First stage 2 field is step1 (integer) -> aux key is visibly disabled (cannot input '.' or '√')
+  assert.equal(app.state.activeInputId, 'q_0_step1');
+  assert.equal(aux.disabled, true);
+  assert.equal(aux.getAttribute('aria-disabled'), 'true');
+  assert.equal(aux.getAttribute('data-state'), 'disabled');
+  assert.equal(aux.getAttribute('data-key'), '');
+  assert.equal(aux.textContent, '—');
+  assert.equal(aux.classList.contains('cursor-not-allowed'), true);
+  const step1El = app.document.querySelector('[data-input-id="q_0_step1"]');
+  app.key('r'); app.key('.'); app.context.pressAuxKey();
+  assert.equal(step1El.getAttribute('data-value'), null);
+  app.key('4');
+  assert.equal(step1El.getAttribute('data-value'), '4');
+
+  // Focus ans2 (radical) -> aux key switches back to enabled '√'
+  app.context.focusInput('q_0_ans2');
+  assert.equal(aux.disabled, false);
+  assert.equal(aux.getAttribute('aria-disabled'), 'false');
+  assert.equal(aux.getAttribute('data-state'), 'enabled');
+  assert.equal(aux.getAttribute('data-key'), '√');
+  assert.equal(aux.textContent, '√');
+  assert.equal(aux.classList.contains('cursor-not-allowed'), false);
+  const ans2El = app.document.querySelector('[data-input-id="q_0_ans2"]');
+  app.key('2'); app.key('r'); app.key('5');
+  assert.equal(ans2El.getAttribute('data-value'), '2√5');
+  assert.match(ans2El.innerHTML, /<span>2<\/span><span class="rad-group"><span class="rad-sign">√<\/span><span class="rad-bar">5/);
+  app.key('Enter');
+  app.tick(1500);
+
+  // Question 2 is legacy decimal -> aux key is enabled '.' and allows decimal input
+  assert.equal(app.state.currentIndex, 1);
+  assert.equal(aux.disabled, false);
+  assert.equal(aux.getAttribute('aria-disabled'), 'false');
+  assert.equal(aux.getAttribute('data-state'), 'enabled');
+  assert.equal(aux.getAttribute('data-key'), '.');
+  assert.equal(aux.textContent, '.');
+  assert.equal(aux.classList.contains('cursor-not-allowed'), false);
+  const decEl = app.document.querySelector('[data-input-id="q_1_dec"]');
+  app.key('r');
+  assert.equal(decEl.getAttribute('data-value'), null);
+  for (const ch of ['0', '.', '3', '7', '5']) app.key(ch);
+  assert.equal(decEl.getAttribute('data-value'), '0.375');
+});
+
+test('radical UI: keyboard entry supports 4, √3, 1√3, 2√5, -√3, -1√3, 15√2, 20√2, minus toggle, and backspace', () => {
+  const cases = [
+    [['4'], radical(4, 1), '4'],
+    [['r', '3'], radical(1, 3), '√3'],
+    [['1', 'r', '3'], radical(1, 3), '1√3'],
+    [['2', '√', '5'], radical(2, 5), '2√5'],
+    [['-', 'R', '3'], radical(-1, 3), '-√3'],
+    [['1', 'r', '3', '-'], radical(-1, 3), '-1√3'],
+    [['1', '5', 'r', '2'], radical(15, 2), '15√2'],
+    [['2', '0', 'r', '2', '9', 'Backspace'], radical(20, 2), '20√2'],
+  ];
+  for (const [keys, spec, expectedRaw] of cases) {
+    const app = createApp();
+    app.mount([question({ stage1Ans: { ans: spec } })]);
+    const el = app.document.querySelector('[data-input-id="q_0_ans"]');
+    for (const k of keys) {
+      if (k === '√') app.context.pressAuxKey();
+      else app.key(k);
+    }
+    assert.equal(el.getAttribute('data-value'), expectedRaw);
+    app.key('Enter');
+    assert.equal(app.state.goldenStars, 1, `failed for ${expectedRaw}`);
+  }
+});
+
+test('radical UI: typed fields allow up to 32 chars while legacy fields stay capped at 10 chars', () => {
+  const app = createApp();
+  app.mount([
+    question({ stage1Ans: { ans: radical(2, 5) } }),
+    question({ stage1Ans: { ans: '1234567890' } }),
+  ]);
+  const radEl = app.document.querySelector('[data-input-id="q_0_ans"]');
+  for (let i = 0; i < 35; i++) app.key('0');
+  assert.equal(radEl.getAttribute('data-value').length, 32);
+
+  app.state.currentIndex = 1;
+  app.context.loadQuestion();
+  const legEl = app.document.querySelector('[data-input-id="q_1_ans"]');
+  for (let i = 0; i < 15; i++) app.key('1');
+  assert.equal(legEl.getAttribute('data-value').length, 10);
+});
+
+test('radical UI: vinculum rendering safely escapes untrusted characters without executing HTML', () => {
+  const app = createApp();
+  const rendered = app.context.renderInputDisplay('<img src=x onerror=alert(1)>√<b>5</b>', true);
+  assert.doesNotMatch(rendered, /<img|<b>/);
+  assert.match(rendered, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(rendered, /&lt;b&gt;5&lt;\/b&gt;/);
+  const rad = app.context.radHtml('<script>1</script>', '<b>2</b>');
+  assert.doesNotMatch(rad, /<script>|<b>/);
+});
+
+test('report-guided counts only questions that entered stage 2, excluding stage-1 unsimplified self-corrections', () => {
+  const app = createApp();
+  app.mount([
+    fixture(), // Q1: first-try correct -> 1 star, not guided
+    fixture(), // Q2: unsimplified '√20' then self-corrected '2√5' in stage 1 -> 0 star, not guided
+    fixture(), // Q3: wrong '2√3' -> enters stage 2 -> corrected -> 0 star, guided = 1
+  ]);
+  // Q1: first-try correct
+  app.fill({ ans: '2√5' }); app.context.checkAnswer(); app.tick(1500);
+  // Q2: unsimplified then corrected in stage 1
+  app.fill({ ans: '√20' }); app.context.checkAnswer();
+  assert.equal(app.state.questions[1].currentStage, 1);
+  assert.equal(app.state.questions[1].firstTry, false);
+  app.fill({ ans: '2√5' }); app.context.checkAnswer(); app.tick(1500);
+  // Q3: wrong then corrected in stage 2
+  app.fill({ ans: '2√3' }); app.context.checkAnswer(); app.tick(600);
+  assert.equal(app.state.questions[2].currentStage, 2);
+  app.fill({ step1: '4', ans2: '2√5' }); app.context.checkAnswer(); app.tick(1500);
+
+  assert.equal(app.el('report-total').textContent, '3 題');
+  assert.equal(app.el('report-perfect').textContent, '1 題');
+  assert.equal(app.el('report-guided').textContent, '1 題');
+  assert.equal(app.el('star-rate-text').textContent, '33%');
+});
+
