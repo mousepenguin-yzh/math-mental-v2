@@ -1402,6 +1402,84 @@
       else if (e.key === 'Enter') pressKey('OK');
     });
 
+    // Exact single-term answers. These are safety limits, not difficulty bands.
+    const exactAnswerLimits = Object.freeze({ length: 32, coefficient: 1000000000, radicand: 1000000 });
+
+    function exactAnswerText(raw) {
+      if (typeof raw !== 'string') return { ok: false, reason: 'syntax' };
+      if (raw.length > exactAnswerLimits.length) return { ok: false, reason: 'limit' };
+      return { ok: true, text: raw.trim().replace(/−/g, '-') };
+    }
+
+    function parseRadicalAnswer(raw) {
+      const text = exactAnswerText(raw);
+      if (!text.ok) return text;
+      if (/^-?(?:\d*√)?$/.test(text.text)) return { ok: false, reason: 'incomplete' };
+      const match = /^(-?)(?:(\d+)|(?:(\d+)?√(\d+)))$/.exec(text.text);
+      if (!match) return { ok: false, reason: 'syntax' };
+      const hasRadical = match[4] !== undefined;
+      const coefficient = (match[1] ? -1 : 1) * Number(hasRadical ? (match[3] || '1') : match[2]);
+      const radicand = hasRadical ? Number(match[4]) : 1;
+      if (!Number.isSafeInteger(coefficient) || Math.abs(coefficient) > exactAnswerLimits.coefficient ||
+          !Number.isSafeInteger(radicand) || radicand > exactAnswerLimits.radicand) {
+        return { ok: false, reason: 'limit' };
+      }
+      return { ok: true, coefficient, radicand, hasRadical };
+    }
+
+    function normalizeRadical(value) {
+      if (!value || !Number.isSafeInteger(value.coefficient) ||
+          Math.abs(value.coefficient) > exactAnswerLimits.coefficient ||
+          !Number.isSafeInteger(value.radicand) || value.radicand < 0 ||
+          value.radicand > exactAnswerLimits.radicand) throw new RangeError('Invalid radical components');
+      let { coefficient, radicand } = value;
+      if (coefficient === 0 || radicand === 0) return { coefficient: 0, radicand: 1 };
+      // At most 999 trial factors; every operation stays on exact safe integers.
+      for (let factor = 2; factor * factor <= radicand; factor++) {
+        const square = factor * factor;
+        while (radicand % square === 0) {
+          coefficient *= factor;
+          radicand /= square;
+        }
+      }
+      if (Math.abs(coefficient) > exactAnswerLimits.coefficient) throw new RangeError('Normalized coefficient limit');
+      return { coefficient, radicand };
+    }
+
+    // Pure result contract: status describes mathematics; accepted applies form policy.
+    function validateTypedAnswer(raw, spec) {
+      const invalid = reason => ({ status: 'invalid', reason, accepted: false });
+      if (!spec || typeof spec !== 'object') return invalid('invalid-spec');
+      if (spec.type === 'integer') {
+        if (!Number.isSafeInteger(spec.expected) || Math.abs(spec.expected) > exactAnswerLimits.coefficient) return invalid('invalid-spec');
+        const text = exactAnswerText(raw);
+        if (!text.ok) return invalid(text.reason);
+        if (text.text === '' || text.text === '-') return invalid('incomplete');
+        if (!/^-?\d+$/.test(text.text)) return invalid('syntax');
+        const value = Number(text.text);
+        if (!Number.isSafeInteger(value) || Math.abs(value) > exactAnswerLimits.coefficient) return invalid('limit');
+        const equivalent = value === spec.expected;
+        return { status: equivalent ? 'correct' : 'incorrect', equivalent, simplest: true, accepted: equivalent };
+      }
+      if (spec.type !== 'radical' || !['simplest', 'equivalent'].includes(spec.form)) return invalid('invalid-spec');
+      let expected;
+      try { expected = normalizeRadical(spec.expected); } catch { return invalid('invalid-spec'); }
+      // Expected values must already be canonical, so broken question data fails closed.
+      if (expected.coefficient !== spec.expected.coefficient || expected.radicand !== spec.expected.radicand) return invalid('invalid-spec');
+      const parsed = parseRadicalAnswer(raw);
+      if (!parsed.ok) return invalid(parsed.reason);
+      let value;
+      try { value = normalizeRadical(parsed); } catch { return invalid('limit'); }
+      const equivalent = value.coefficient === expected.coefficient && value.radicand === expected.radicand;
+      const simplest = !parsed.hasRadical || (parsed.coefficient !== 0 && parsed.radicand > 1 &&
+        value.coefficient === parsed.coefficient && value.radicand === parsed.radicand);
+      return {
+        status: !equivalent ? 'incorrect' : simplest ? 'correct' : 'equivalent-not-simplest',
+        equivalent, simplest, value,
+        accepted: equivalent && (simplest || spec.form === 'equivalent')
+      };
+    }
+
     // --- 核心判定演算法 ---
     function checkAnswer() {
       if (!canAnswer()) return;
@@ -1417,19 +1495,43 @@
       for (const key of Object.keys(expectedAns)) {
         const fullId = `q_${state.currentIndex}_${key}`;
         const inputEl = document.querySelector(`[data-input-id="${fullId}"]`);
-        userValues[key] = inputEl ? (inputEl.getAttribute('data-value') || '').trim() : '';
+        const raw = inputEl ? (inputEl.getAttribute('data-value') || '') : '';
+        userValues[key] = typeof expectedAns[key] === 'string' ? raw.trim() : raw;
       }
 
-      // 等值分數比對
+      // Only explicit typed answers enter the new path. Never fall back on numeric prefixes.
+      const typedResults = {};
+      for (const [key, spec] of Object.entries(expectedAns)) {
+        if (typeof spec === 'string') continue;
+        typedResults[key] = validateTypedAnswer(userValues[key], spec);
+      }
+      // Typed exchange groups are outside V1; reject configuration rather than sort by parseFloat.
+      const unsupportedGroup = stage === 2 && (q.interchangeableGroups || [])
+        .some(group => group.some(key => Object.hasOwn(typedResults, key)));
+      const invalidTyped = Object.values(typedResults).find(result => result.status === 'invalid');
+      if (unsupportedGroup || invalidTyped) {
+        showFeedback(false, unsupportedGroup || invalidTyped.reason === 'invalid-spec'
+          ? '題目答案設定有誤，請重新開始。'
+          : invalidTyped.reason === 'incomplete' ? '請補完答案後再送出。' : '請使用範圍內的整數或單項根式，檢查輸入格式。');
+        return;
+      }
+
+      // 等值分數比對（既有字串答案專用）
       const fractionPrefixes = [];
       for (const key of Object.keys(expectedAns)) {
         if (key.endsWith('_num')) {
           const prefix = key.slice(0, -4);
-          if (expectedAns[prefix + '_den'] !== undefined) fractionPrefixes.push(prefix);
+          if (typeof expectedAns[key] === 'string' && typeof expectedAns[prefix + '_den'] === 'string') fractionPrefixes.push(prefix);
         }
       }
 
       const validatedKeys = new Set();
+      for (const [key, result] of Object.entries(typedResults)) {
+        validatedKeys.add(key);
+        const fullId = `q_${state.currentIndex}_${key}`;
+        checkedInputs[fullId] = { el: document.querySelector(`[data-input-id="${fullId}"]`), isCorrect: result.accepted };
+        if (!result.accepted) isAllCorrect = false;
+      }
       let hasUnsimplified = false; let unsimplifiedText = "";
 
       for (const prefix of fractionPrefixes) {
@@ -1491,6 +1593,15 @@
 
         checkedInputs[fullId] = { el: inputEl, isCorrect: isCorrect };
         if (!isCorrect) isAllCorrect = false;
+      }
+
+      // Equivalent but unfinished answers stay editable; a first-stage attempt loses its star.
+      const needsSimplifying = Object.entries(typedResults).filter(([, result]) => !result.accepted && result.status === 'equivalent-not-simplest');
+      const unfinishedIds = new Set(needsSimplifying.map(([key]) => `q_${state.currentIndex}_${key}`));
+      if (needsSimplifying.length && Object.entries(checkedInputs).every(([id, item]) => item.isCorrect || unfinishedIds.has(id))) {
+        if (stage === 1) q.firstTry = false;
+        showFeedback(false, '數值正確，請繼續化為最簡形式。');
+        return;
       }
 
       if (isAllCorrect) {
