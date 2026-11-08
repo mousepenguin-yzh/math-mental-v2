@@ -215,6 +215,50 @@
     .math-input.is-focused::before {
       content: "" !important;
     }
+
+    /* 明確根號顯示（含頂線 vinculum，讓被開方數範圍一目了然） */
+    .rad-group {
+      display: inline-flex;
+      align-items: baseline;
+      vertical-align: baseline;
+      white-space: nowrap;
+    }
+    .rad-sign {
+      font-family: 'Noto Sans TC', sans-serif;
+      font-weight: 900;
+      line-height: 1;
+      margin-right: -0.04em;
+      transform: translateY(-0.02em);
+    }
+    .rad-bar {
+      display: inline-flex;
+      align-items: baseline;
+      border-top: 2px solid currentColor;
+      padding: 0.05em 0.16em 0 0.1em;
+      line-height: 1.05;
+    }
+    .rad-bar-empty {
+      min-width: 0.65em;
+      border-top: 2px dashed rgba(129, 140, 248, 0.8);
+    }
+
+    /* 320px 極窄螢幕適配 */
+    @media (max-width: 359px) {
+      .app-main {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+      }
+      #question-card {
+        padding: 0.65rem;
+      }
+      #main-formula {
+        font-size: 1.35rem;
+      }
+      .math-input {
+        min-height: 2.4rem;
+        padding: 0.2rem 0.5rem;
+      }
+    }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans flex flex-col overflow-hidden relative">
@@ -503,7 +547,7 @@
   </main>
 
   <!--================= 懸浮式通知 Toast Banner =================-->
-  <div id="feedback-banner" class="fixed top-14 left-1/2 -translate-x-1/2 z-30 hidden px-4 py-1.5 rounded-full shadow-2xl border text-xs font-black tracking-wide transition-all transform scale-90 opacity-0 whitespace-nowrap"></div>
+  <div id="feedback-banner" class="fixed top-14 left-1/2 -translate-x-1/2 z-30 hidden px-4 py-1.5 rounded-full shadow-2xl border text-xs font-black tracking-wide transition-all transform scale-90 opacity-0 max-w-[92vw] text-center truncate"></div>
 
   <!--================= 客製化防誤觸 Modal 彈窗 =================-->
   <div id="exit-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -540,7 +584,7 @@
       <button onclick="pressKey('1')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">1</button>
       <button onclick="pressKey('2')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">2</button>
       <button onclick="pressKey('3')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">3</button>
-      <button onclick="pressKey('.')" class="key-press bg-slate-600 hover:bg-slate-500 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">.</button>
+      <button id="key-aux" data-key="." onclick="pressAuxKey()" class="key-press bg-slate-600 hover:bg-slate-500 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="小數點 (.)">.</button>
 
       <button onclick="pressKey('0')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">0</button>
       <button onclick="pressKey('OK')" class="key-press bg-gradient-to-r from-indigo-500 to-purple-600 hover:brightness-110 text-white font-bold text-sm py-1.5 rounded-lg shadow-md flex items-center justify-center col-span-3 space-x-1">
@@ -557,6 +601,7 @@
       qCount: 10,    
       currentIndex: 0,
       goldenStars: 0,
+      guidedCount: 0,
       questions: [],
       activeInputId: null,
       errorLog: {},
@@ -1311,9 +1356,112 @@
     }
 
     // --- 界面解析與渲染系統 ---
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // 將帶有 √ 的數學字串轉換為帶有明確頂線 (vinculum) 的安全 HTML
+    function radHtml(radicand, coef = '') {
+      return `${escapeHtml(coef)}<span class="rad-group"><span class="rad-sign">√</span><span class="rad-bar">${escapeHtml(radicand)}</span></span>`;
+    }
+
+    function formatFormulaDisplay(formulaHtml) {
+      if (!formulaHtml || typeof formulaHtml !== 'string') return '';
+      if (formulaHtml.includes('rad-group')) return formulaHtml;
+      return formulaHtml.replace(/√(\d+)/g, (_, radicand) => radHtml(radicand));
+    }
+
+    // 安全渲染輸入框內的數值（將開頭 - 轉為明確的 −，將 √... 轉為帶頂線根號）
+    function renderInputDisplay(rawVal, isFocused) {
+      const caretHtml = isFocused ? '<span class="caret-blink text-indigo-400 ml-0.5 font-normal">|</span>' : '';
+      const raw = String(rawVal ?? '');
+      if (!raw) return caretHtml;
+
+      const display = raw.replace(/^-/, '−');
+      const sqrtIndex = display.indexOf('√');
+      if (sqrtIndex === -1) {
+        return `<span>${escapeHtml(display)}</span>${caretHtml}`;
+      }
+
+      const beforeSqrt = escapeHtml(display.slice(0, sqrtIndex));
+      const afterSqrt = escapeHtml(display.slice(sqrtIndex + 1));
+      if (afterSqrt.length === 0) {
+        return `<span>${beforeSqrt}</span><span class="rad-group"><span class="rad-sign">√</span><span class="rad-bar rad-bar-empty">&nbsp;${caretHtml}</span></span>`;
+      }
+      return `<span>${beforeSqrt}</span><span class="rad-group"><span class="rad-sign">√</span><span class="rad-bar">${afterSqrt}${caretHtml}</span></span>`;
+    }
+
+    function getInputSpec(inputId) {
+      const q = state.questions[state.currentIndex];
+      if (!q || !inputId) return null;
+      const prefix = `q_${state.currentIndex}_`;
+      const key = inputId.startsWith(prefix) ? inputId.slice(prefix.length) : inputId;
+      const stageAns = (q.currentStage === 2 ? q.stage2Ans : q.stage1Ans) || {};
+      if (Object.hasOwn(stageAns, key)) return stageAns[key];
+      if (q.stage1Ans && Object.hasOwn(q.stage1Ans, key)) return q.stage1Ans[key];
+      if (q.stage2Ans && Object.hasOwn(q.stage2Ans, key)) return q.stage2Ans[key];
+      return null;
+    }
+
+    function getFieldInputMode(spec) {
+      if (spec && typeof spec === 'object') {
+        if (spec.type === 'radical') return 'radical';
+        if (spec.type === 'integer') return 'integer';
+      }
+      return 'legacy';
+    }
+
+    function getActiveInputMode() {
+      return getFieldInputMode(getInputSpec(state.activeInputId));
+    }
+
+    function updateKeyboardForInput(inputId) {
+      const auxBtn = document.getElementById('key-aux');
+      if (!auxBtn) return;
+      const mode = getFieldInputMode(getInputSpec(inputId));
+      const isRadical = mode === 'radical';
+      auxBtn.setAttribute('data-key', isRadical ? '√' : '.');
+      auxBtn.setAttribute('title', isRadical ? '根號 (快捷鍵 r)' : '小數點 (.)');
+      auxBtn.textContent = isRadical ? '√' : '.';
+      auxBtn.innerHTML = isRadical ? '√' : '.';
+      if (isRadical) {
+        auxBtn.classList.remove('bg-slate-600', 'hover:bg-slate-500', 'font-bold');
+        auxBtn.classList.add('bg-indigo-600/80', 'hover:bg-indigo-500', 'font-black', 'border', 'border-indigo-400/40');
+      } else {
+        auxBtn.classList.remove('bg-indigo-600/80', 'hover:bg-indigo-500', 'font-black', 'border', 'border-indigo-400/40');
+        auxBtn.classList.add('bg-slate-600', 'hover:bg-slate-500', 'font-bold');
+      }
+    }
+
+    function pressAuxKey() {
+      const auxBtn = document.getElementById('key-aux');
+      const key = (auxBtn && auxBtn.getAttribute('data-key')) || (getActiveInputMode() === 'radical' ? '√' : '.');
+      pressKey(key);
+    }
+
+    function setInputValue(el, val, isFocused = true) {
+      if (!el) return;
+      const raw = String(val ?? '');
+      el.setAttribute('data-value', raw);
+      el.innerHTML = renderInputDisplay(raw, isFocused);
+    }
+
+    function clearCurrentInput() {
+      if (!canAnswer() || !state.activeInputId) return;
+      const activeEl = document.querySelector(`[data-input-id="${state.activeInputId}"]`);
+      if (!activeEl) return;
+      setInputValue(activeEl, '', true);
+    }
+
     function parseMarkup(markup, qIndex) {
       if (!markup) return ''; 
-      let html = markup;
+      let html = formatFormulaDisplay(markup);
+      const q = state.questions[qIndex];
       const fractionRegex = /\[fraction:([^:]+):([^:]+)\]/g;
       html = html.replace(fractionRegex, (match, numId, denId) => {
         const fullNumId = `q_${qIndex}_${numId}`;
@@ -1327,12 +1475,15 @@
         `;
       });
 
-      const inputRegex = /\[input:([^:]+)(?::([^\]]+))?\]/g;
+      const inputRegex = /\[input:([^:\]]+)(?::([^\]]+))?\]/g;
       html = html.replace(inputRegex, (match, inputId, widthClass) => {
         const fullInputId = `q_${qIndex}_${inputId}`;
-        const width = widthClass || 'w-12';
+        const spec = q ? ((q.currentStage === 2 ? q.stage2Ans?.[inputId] : q.stage1Ans?.[inputId]) ?? q.stage1Ans?.[inputId] ?? q.stage2Ans?.[inputId]) : null;
+        const mode = getFieldInputMode(spec);
+        const defaultWidth = mode === 'radical' ? 'min-w-[5.5rem] px-2.5' : 'w-12 px-1.5';
+        const width = widthClass ? `${widthClass} px-2` : defaultWidth;
         return `
-          <div data-input-id="${fullInputId}" onclick="focusInput('${fullInputId}')" class="math-input inline-flex items-center justify-center ${width} h-10 border border-slate-600 rounded-lg bg-slate-800 text-slate-100 font-bold text-base cursor-pointer transition-all shadow-sm mx-0.5 select-none focus:outline-none whitespace-nowrap"></div>
+          <div data-input-id="${fullInputId}" data-input-mode="${mode}" onclick="focusInput('${fullInputId}')" class="math-input inline-flex items-center justify-center ${width} h-10 border border-slate-600 rounded-lg bg-slate-800 text-slate-100 font-bold text-base cursor-pointer transition-all shadow-sm mx-0.5 select-none focus:outline-none whitespace-nowrap"></div>
         `;
       });
       return html;
@@ -1345,20 +1496,19 @@
         if (prev) {
           prev.classList.remove('border-indigo-400', 'bg-indigo-950/40', 'ring-1', 'ring-indigo-500/30', 'is-focused');
           prev.classList.add('border-slate-600', 'bg-slate-800');
-          const caret = prev.querySelector('.caret-blink');
-          if (caret) caret.remove();
           const val = prev.getAttribute('data-value') || '';
-          if (val === '') prev.innerHTML = '';
+          prev.innerHTML = renderInputDisplay(val, false);
         }
       }
 
       state.activeInputId = inputId;
+      updateKeyboardForInput(inputId);
       const activeEl = document.querySelector(`[data-input-id="${inputId}"]`);
       if (activeEl) {
-        activeEl.classList.remove('border-slate-600', 'bg-slate-800');
+        activeEl.classList.remove('border-slate-600', 'bg-slate-800', 'border-rose-500', 'bg-rose-950/20', 'text-rose-300');
         activeEl.classList.add('border-indigo-400', 'bg-indigo-950/40', 'ring-1', 'ring-indigo-500/30', 'is-focused');
         const currentVal = activeEl.getAttribute('data-value') || '';
-        activeEl.innerHTML = `${currentVal}<span class="caret-blink text-indigo-400 ml-0.5">|</span>`;
+        activeEl.innerHTML = renderInputDisplay(currentVal, true);
         setGameTimeout(() => { activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); }, 150);
       }
     }
@@ -1369,37 +1519,70 @@
       const activeEl = document.querySelector(`[data-input-id="${state.activeInputId}"]`);
       if (!activeEl) return;
 
+      const mode = getActiveInputMode();
+      const maxLen = mode === 'legacy' ? 10 : exactAnswerLimits.length;
       let currentVal = activeEl.getAttribute('data-value') || '';
 
       if (key === 'Backspace') {
         currentVal = currentVal.slice(0, -1);
+      } else if (key === 'Clear') {
+        currentVal = '';
       } else if (key === '-') {
         if (currentVal.startsWith('-')) currentVal = currentVal.slice(1);
-        else currentVal = '-' + currentVal;
+        else if (currentVal.length < maxLen) currentVal = '-' + currentVal;
       } else if (key === '.') {
-        if (!currentVal.includes('.')) currentVal += '.';
+        if (mode !== 'legacy') return;
+        if (!currentVal.includes('.') && currentVal.length < maxLen) currentVal += '.';
+      } else if (key === '√') {
+        if (mode !== 'radical') return;
+        if (!currentVal.includes('√')) {
+          if (currentVal.length < maxLen) currentVal += '√';
+        } else {
+          showFeedback(false, '💡 已經輸入過根號 √ 囉！可按退格修改或直接輸入數字');
+          return;
+        }
       } else if (key === 'OK') {
         checkAnswer();
         return;
-      } else {
-        if (currentVal.length < 10) { 
+      } else if (key >= '0' && key <= '9') {
+        if (currentVal.length < maxLen) { 
           currentVal += key;
         }
+      } else {
+        return;
       }
 
-      activeEl.setAttribute('data-value', currentVal);
-      activeEl.innerHTML = `${currentVal}<span class="caret-blink text-indigo-400 ml-0.5">|</span>`;
+      setInputValue(activeEl, currentVal, true);
     }
 
     document.addEventListener('keydown', (e) => {
       if (!canAnswer()) return;
       if (document.getElementById('game-panel').classList.contains('hidden')) return;
       
-      if (e.key >= '0' && e.key <= '9') pressKey(e.key);
-      else if (e.key === '-') pressKey('-');
-      else if (e.key === '.') pressKey('.');
-      else if (e.key === 'Backspace') pressKey('Backspace');
-      else if (e.key === 'Enter') pressKey('OK');
+      if (e.key >= '0' && e.key <= '9') {
+        if (e.preventDefault) e.preventDefault();
+        pressKey(e.key);
+      } else if (e.key === '-') {
+        if (e.preventDefault) e.preventDefault();
+        pressKey('-');
+      } else if (e.key === '.') {
+        if (e.preventDefault) e.preventDefault();
+        pressKey('.');
+      } else if (e.key === 'r' || e.key === 'R') {
+        if (getActiveInputMode() === 'radical') {
+          if (e.preventDefault) e.preventDefault();
+          pressKey('√');
+        }
+      } else if (e.key === 'Backspace') {
+        if (e.preventDefault) e.preventDefault();
+        pressKey('Backspace');
+      } else if (e.key === 'Escape') {
+        if (e.preventDefault) e.preventDefault();
+        clearCurrentInput();
+      } else if (e.key === 'Enter') {
+        if (e.preventDefault) e.preventDefault();
+        pressKey('OK');
+      }
     });
 
     // Exact single-term answers. These are safety limits, not difficulty bands.
@@ -1601,6 +1784,8 @@
       if (needsSimplifying.length && Object.entries(checkedInputs).every(([id, item]) => item.isCorrect || unfinishedIds.has(id))) {
         if (stage === 1) q.firstTry = false;
         showFeedback(false, '數值正確，請繼續化為最簡形式。');
+        const firstUnfinishedId = [...unfinishedIds][0];
+        if (firstUnfinishedId) focusInput(firstUnfinishedId);
         return;
       }
 
@@ -1613,10 +1798,10 @@
         showFeedback(true, successMsg);
         for (const [key, item] of Object.entries(checkedInputs)) {
           if (item.el) {
-            item.el.classList.remove('border-indigo-400', 'border-slate-600', 'ring-1', 'ring-indigo-500/30');
+            item.el.classList.remove('border-indigo-400', 'border-slate-600', 'border-rose-500', 'bg-rose-950/20', 'text-rose-300', 'ring-1', 'ring-indigo-500/30', 'is-focused');
             item.el.classList.add('border-emerald-500', 'bg-emerald-950/20', 'text-emerald-300');
-            const cb = item.el.querySelector('.caret-blink');
-            if (cb) cb.remove(); 
+            const rawVal = item.el.getAttribute('data-value') || '';
+            item.el.innerHTML = renderInputDisplay(rawVal, false);
           }
         }
         
@@ -1631,21 +1816,33 @@
           q.errorLogged = true;
         }
 
+        let firstWrongId = null;
         for (const [fullId, item] of Object.entries(checkedInputs)) {
-          if (item.el && !item.isCorrect) {
-            item.el.classList.remove('border-indigo-400');
-            item.el.classList.add('border-rose-500', 'bg-rose-950/20', 'text-rose-300', 'shake-anim');
-            setGameTimeout(() => { item.el.classList.remove('shake-anim'); }, 300);
+          if (item.el) {
+            item.el.classList.remove('border-indigo-400', 'ring-1', 'ring-indigo-500/30', 'border-emerald-500', 'bg-emerald-950/20', 'text-emerald-300', 'border-rose-500', 'bg-rose-950/20', 'text-rose-300');
+            if (item.isCorrect) {
+              item.el.classList.add('border-emerald-500', 'bg-emerald-950/20', 'text-emerald-300');
+              const rawVal = item.el.getAttribute('data-value') || '';
+              item.el.innerHTML = renderInputDisplay(rawVal, false);
+            } else {
+              if (!firstWrongId) firstWrongId = fullId;
+              item.el.classList.add('border-rose-500', 'bg-rose-950/20', 'text-rose-300', 'shake-anim');
+              setGameTimeout(() => { item.el.classList.remove('shake-anim'); }, 300);
+            }
           }
         }
         q.firstTry = false;
         if (stage === 1) {
+          if (!q.enteredStage2) {
+            q.enteredStage2 = true;
+            state.guidedCount = (state.guidedCount || 0) + 1;
+          }
           q.answerState = 'opening-correction';
           state.activeInputId = null;
           setGameTimeout(() => {
             q.currentStage = 2;
             q.answerState = 'answering';
-            document.getElementById('stage-2-hint').innerHTML = q.stage2Hint;
+            document.getElementById('stage-2-hint').innerHTML = formatFormulaDisplay(q.stage2Hint);
             document.getElementById('stage-2-input-area').innerHTML = parseMarkup(q.stage2Markup, state.currentIndex);
             const stage2Container = document.getElementById('stage-2-container');
             stage2Container.classList.add('open');
@@ -1661,6 +1858,8 @@
               }
             }, 250);
           }, 600);
+        } else if (firstWrongId) {
+          focusInput(firstWrongId);
         }
       }
     }
@@ -1876,9 +2075,12 @@
       document.getElementById('star-circle').setAttribute('stroke-dashoffset', 238.76 - (238.76 * perfectRate) / 100);
       document.getElementById('star-rate-text').textContent = `${perfectRate}%`;
 
+      const guidedTotal = Array.isArray(state.questions) && state.questions.length
+        ? state.questions.filter(q => q && q.enteredStage2).length
+        : (state.guidedCount || 0);
       document.getElementById('report-total').textContent = `${state.qCount} 題`;
       document.getElementById('report-perfect').textContent = `${state.goldenStars} 題`;
-      document.getElementById('report-guided').textContent = `${state.qCount - state.goldenStars} 題`;
+      document.getElementById('report-guided').textContent = `${guidedTotal} 題`;
       document.getElementById('diagnosis-text').textContent = getDiagnosis(perfectRate);
     }
 
@@ -1999,6 +2201,7 @@
       hideExitModal();
       state.currentIndex = 0;
       state.goldenStars = 0;
+      state.guidedCount = 0;
       state.errorLog = {};
       state.questions = buildQuestions(state.difficulty, state.qCount);
       state.startTime = Date.now();
@@ -2029,10 +2232,11 @@
       q.answerState = 'answering';
       q.currentStage = 1; 
       q.firstTry = true;  
+      q.enteredStage2 = false;
       if (q.errorLogged === undefined) q.errorLogged = false;
 
       document.getElementById('topic-tag').textContent = q.tag;
-      document.getElementById('main-formula').innerHTML = q.formulaHtml;
+      document.getElementById('main-formula').innerHTML = formatFormulaDisplay(q.formulaHtml);
 
       // 步驟四：第一階段主動態繪製直角三角形
       if (q.geomParams) {
