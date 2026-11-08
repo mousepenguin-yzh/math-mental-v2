@@ -232,6 +232,9 @@ test('radical UI: keyboard aux key switches by field spec between radical, integ
   const aux = app.el('key-aux');
   const stage1Input = app.document.querySelector('[data-input-id="q_0_ans"]');
   assert.equal(aux.getAttribute('data-key'), '√');
+  assert.equal(aux.getAttribute('data-state'), 'enabled');
+  assert.equal(aux.getAttribute('aria-disabled'), 'false');
+  assert.equal(aux.disabled, false);
   assert.equal(aux.textContent, '√');
   assert.equal(stage1Input.getAttribute('data-input-mode'), 'radical');
   assert.match(app.el('main-formula').innerHTML, /class="rad-group".*<span class="rad-bar">20<\/span>/);
@@ -254,18 +257,28 @@ test('radical UI: keyboard aux key switches by field spec between radical, integ
   app.tick(600);
   assert.equal(app.state.questions[0].currentStage, 2);
   app.tick(250);
-  // First stage 2 field is step1 (integer) -> aux key switches away from '√' to '.'
+  // First stage 2 field is step1 (integer) -> aux key is visibly disabled (cannot input '.' or '√')
   assert.equal(app.state.activeInputId, 'q_0_step1');
-  assert.equal(aux.getAttribute('data-key'), '.');
+  assert.equal(aux.disabled, true);
+  assert.equal(aux.getAttribute('aria-disabled'), 'true');
+  assert.equal(aux.getAttribute('data-state'), 'disabled');
+  assert.equal(aux.getAttribute('data-key'), '');
+  assert.equal(aux.textContent, '—');
+  assert.equal(aux.classList.contains('cursor-not-allowed'), true);
   const step1El = app.document.querySelector('[data-input-id="q_0_step1"]');
   app.key('r'); app.key('.'); app.context.pressAuxKey();
   assert.equal(step1El.getAttribute('data-value'), null);
   app.key('4');
   assert.equal(step1El.getAttribute('data-value'), '4');
 
-  // Focus ans2 (radical) -> aux key switches back to '√'
+  // Focus ans2 (radical) -> aux key switches back to enabled '√'
   app.context.focusInput('q_0_ans2');
+  assert.equal(aux.disabled, false);
+  assert.equal(aux.getAttribute('aria-disabled'), 'false');
+  assert.equal(aux.getAttribute('data-state'), 'enabled');
   assert.equal(aux.getAttribute('data-key'), '√');
+  assert.equal(aux.textContent, '√');
+  assert.equal(aux.classList.contains('cursor-not-allowed'), false);
   const ans2El = app.document.querySelector('[data-input-id="q_0_ans2"]');
   app.key('2'); app.key('r'); app.key('5');
   assert.equal(ans2El.getAttribute('data-value'), '2√5');
@@ -273,9 +286,14 @@ test('radical UI: keyboard aux key switches by field spec between radical, integ
   app.key('Enter');
   app.tick(1500);
 
-  // Question 2 is legacy decimal -> aux key is '.' and allows decimal input
+  // Question 2 is legacy decimal -> aux key is enabled '.' and allows decimal input
   assert.equal(app.state.currentIndex, 1);
+  assert.equal(aux.disabled, false);
+  assert.equal(aux.getAttribute('aria-disabled'), 'false');
+  assert.equal(aux.getAttribute('data-state'), 'enabled');
   assert.equal(aux.getAttribute('data-key'), '.');
+  assert.equal(aux.textContent, '.');
+  assert.equal(aux.classList.contains('cursor-not-allowed'), false);
   const decEl = app.document.querySelector('[data-input-id="q_1_dec"]');
   app.key('r');
   assert.equal(decEl.getAttribute('data-value'), null);

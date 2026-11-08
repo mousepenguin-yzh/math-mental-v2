@@ -1424,23 +1424,49 @@
       const auxBtn = document.getElementById('key-aux');
       if (!auxBtn) return;
       const mode = getFieldInputMode(getInputSpec(inputId));
-      const isRadical = mode === 'radical';
-      auxBtn.setAttribute('data-key', isRadical ? '√' : '.');
-      auxBtn.setAttribute('title', isRadical ? '根號 (快捷鍵 r)' : '小數點 (.)');
-      auxBtn.textContent = isRadical ? '√' : '.';
-      auxBtn.innerHTML = isRadical ? '√' : '.';
-      if (isRadical) {
-        auxBtn.classList.remove('bg-slate-600', 'hover:bg-slate-500', 'font-bold');
-        auxBtn.classList.add('bg-indigo-600/80', 'hover:bg-indigo-500', 'font-black', 'border', 'border-indigo-400/40');
+      auxBtn.classList.remove(
+        'bg-slate-600', 'hover:bg-slate-500', 'text-white', 'font-bold',
+        'bg-indigo-600/80', 'hover:bg-indigo-500', 'font-black', 'border', 'border-indigo-400/40',
+        'bg-slate-800/70', 'text-slate-500', 'border-slate-700/60', 'opacity-45', 'cursor-not-allowed', 'pointer-events-none'
+      );
+
+      if (mode === 'radical') {
+        auxBtn.disabled = false;
+        auxBtn.setAttribute('aria-disabled', 'false');
+        auxBtn.setAttribute('data-key', '√');
+        auxBtn.setAttribute('data-state', 'enabled');
+        auxBtn.setAttribute('title', '根號 (快捷鍵 r)');
+        auxBtn.textContent = '√';
+        auxBtn.innerHTML = '√';
+        auxBtn.classList.add('bg-indigo-600/80', 'hover:bg-indigo-500', 'text-white', 'font-black', 'border', 'border-indigo-400/40');
+      } else if (mode === 'integer') {
+        auxBtn.disabled = true;
+        auxBtn.setAttribute('aria-disabled', 'true');
+        auxBtn.setAttribute('data-key', '');
+        auxBtn.setAttribute('data-state', 'disabled');
+        auxBtn.setAttribute('title', '整數步驟不需輸入小數點或根號');
+        auxBtn.textContent = '—';
+        auxBtn.innerHTML = '—';
+        auxBtn.classList.add('bg-slate-800/70', 'text-slate-500', 'font-bold', 'border', 'border-slate-700/60', 'opacity-45', 'cursor-not-allowed', 'pointer-events-none');
       } else {
-        auxBtn.classList.remove('bg-indigo-600/80', 'hover:bg-indigo-500', 'font-black', 'border', 'border-indigo-400/40');
-        auxBtn.classList.add('bg-slate-600', 'hover:bg-slate-500', 'font-bold');
+        auxBtn.disabled = false;
+        auxBtn.setAttribute('aria-disabled', 'false');
+        auxBtn.setAttribute('data-key', '.');
+        auxBtn.setAttribute('data-state', 'enabled');
+        auxBtn.setAttribute('title', '小數點 (.)');
+        auxBtn.textContent = '.';
+        auxBtn.innerHTML = '.';
+        auxBtn.classList.add('bg-slate-600', 'hover:bg-slate-500', 'text-white', 'font-bold');
       }
     }
 
     function pressAuxKey() {
       const auxBtn = document.getElementById('key-aux');
-      const key = (auxBtn && auxBtn.getAttribute('data-key')) || (getActiveInputMode() === 'radical' ? '√' : '.');
+      if (auxBtn && (auxBtn.disabled || auxBtn.getAttribute('aria-disabled') === 'true')) return;
+      const mode = getActiveInputMode();
+      if (mode === 'integer') return;
+      const key = (auxBtn && auxBtn.getAttribute('data-key')) || (mode === 'radical' ? '√' : '.');
+      if (!key) return;
       pressKey(key);
     }
 
