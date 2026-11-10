@@ -73,6 +73,6 @@ rows.push('## 樣本心算品質自查','','- 共 '+all.length+' 題；最長題
   ...Object.keys(subtypes).map(s=>'| '+subtypes[s]+' ('+s+') | '+(stats[s]||0)+' |'),'');
 const content=rows.join('\n');
 if(process.argv.includes('--check')) {
-  if(readFileSync(output,'utf8')!==content) throw new Error('題庫樣本已過期，請重新生成並人工審查');
+  if(readFileSync(output,'utf8').replace(/\r\n/g,'\n')!==content) throw new Error('題庫樣本已過期，請重新生成並人工審查');
   console.log('180 題樣本與正式出題器一致');
 } else {writeFileSync(output,content);console.log(output);}
