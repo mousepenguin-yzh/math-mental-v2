@@ -364,6 +364,16 @@
             </div>
             <div class="w-3.5 h-3.5 rounded-full border border-slate-600 flex items-center justify-center check-dot shrink-0 ml-2"></div>
           </button>
+          <button onclick="selectDifficulty('radicals')" id="btn-diff-radicals" class="diff-btn w-full text-left p-2 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-700/30 transition-all flex items-center justify-between group">
+            <div class="flex items-center space-x-2.5 min-w-0">
+              <div class="bg-cyan-500/10 text-cyan-400 w-7 h-7 rounded-lg flex items-center justify-center shrink-0"><span class="font-math font-black text-xs">06</span></div>
+              <div class="min-w-0">
+                <h3 class="font-bold text-sm text-slate-100 group-hover:text-white">根式運算特訓</h3>
+                <p class="text-[11px] text-slate-300">化簡、同類方根加減、根式乘除</p>
+              </div>
+            </div>
+            <div class="w-3.5 h-3.5 rounded-full border border-slate-600 flex items-center justify-center check-dot shrink-0 ml-2"></div>
+          </button>
         </div>
       </div>
 
@@ -1343,7 +1353,183 @@
       return ordered;
     }
 
+    // 根式 V1：有限結構題庫。難度取決於轉換策略，非被開方數大小。
+    function radicalText(value) {
+      const { coefficient: c, radicand: r } = value;
+      if (c === 0 || r === 1) return String(c);
+      return (c === 1 ? '' : c === -1 ? '-' : String(c)) + '√' + r;
+    }
+
+    function makeRadicalQuestion(type, subtype, band, operands, operator, strategy) {
+      const terms = operands.map(t => normalizeRadical(t));
+      const [a, b] = terms;
+      let answer;
+      if (type === 'simplify') answer = a;
+      else if (type === 'add-subtract') answer = normalizeRadical({
+        coefficient: a.coefficient + (operator === '+' ? 1 : -1) * b.coefficient,
+        radicand: a.radicand
+      });
+      else if (operator === '×') answer = normalizeRadical({ coefficient: a.coefficient * b.coefficient, radicand: a.radicand * b.radicand });
+      else {
+        // 先取根號內整數商再化簡，最後除外係數，避免中途出現分數規格。
+        const ratio = normalizeRadical({ coefficient: operands[0].coefficient, radicand: operands[0].radicand / operands[1].radicand });
+        answer = normalizeRadical({ coefficient: ratio.coefficient / operands[1].coefficient, radicand: ratio.radicand });
+      }
+      const formula = operands.map((t, i) => operator === '÷' && i === 1 && t.coefficient !== 1 ? '(' + radicalText(t) + ')' : radicalText(t)).join(' ' + operator + ' ');
+      const tokens = operands.map(t => t.coefficient + ':' + t.radicand);
+      if (operator === '+' || operator === '×') tokens.sort();
+      const q = {
+        presentationType: type, subtype, difficultyBand: band,
+        category: { simplify: 'Radical_Simplify', 'add-subtract': 'Radical_AddSubtract', 'multiply-divide': 'Radical_MultiplyDivide' }[type],
+        tag: { simplify: '根式化簡', 'add-subtract': '同類方根加減', 'multiply-divide': '根式乘除' }[type],
+        operands, operator, mentalStrategy: strategy,
+        questionKey: operator + ':' + tokens.join('|'), formulaHtml: formula,
+        stage1Markup: '最簡答案 = [input:ans]',
+        stage1Ans: { ans: { type: 'radical', expected: answer, form: 'simplest' } },
+        stage2Ans: {}, stage2Markup: '', stage2Hint: ''
+      };
+      const blank = (key, value) => {
+        q.stage2Ans[key] = { type: 'integer', expected: value };
+        return '[input:' + key + ']';
+      };
+      const rows = [];
+      const raw = operands[0];
+      if (type === 'simplify') {
+        if (subtype === 'perfect-square') {
+          // 一步反查平方已足夠；不重複填相同的根與最終答案。
+          q.stage2Hint = '根號表示非負平方根：想想哪個正整數的平方等於根號內的數。';
+        } else {
+          rows.push(raw.radicand + ' = ' + blank('square', (a.coefficient / raw.coefficient) ** 2) + ' × ' + a.radicand);
+          q.stage2Hint = '先找容易辨識的完全平方因數，開根號後再乘根號外係數。';
+        }
+      } else if (type === 'add-subtract') {
+        q.stage2Hint = (subtype === 'direct' ? '根號內已相同，直接合併係數；' : '先化簡成同類方根，再合併係數；') + '根號內不能直接加減，異類方根不能合併。';
+        operands.forEach((t, i) => {
+          if (t.radicand !== terms[i].radicand) {
+            rows.push(radicalText(t) + ' = ' + blank(i === 0 ? 'left' : 'right', terms[i].coefficient) + '√' + terms[i].radicand);
+          }
+        });
+        if (!rows.length) {
+          rows.push('合併係數：' + a.coefficient + ' ' + operator + ' ' + b.coefficient + ' = ' + blank('coefficient', answer.coefficient));
+        }
+      } else if (operator === '÷') {
+        q.stage2Hint = '正數根式相除，先把根號內相除，再開根號；根號外係數另外相除。';
+        rows.push('根號內先除：' + raw.radicand + ' ÷ ' + operands[1].radicand + ' = ' + blank('quotient', raw.radicand / operands[1].radicand));
+      } else if (a.radicand === b.radicand) {
+        q.stage2Hint = '先化簡成相同根號；兩個相同根號相乘等於根號內的數，再乘係數。';
+        const index = operands.findIndex((t, i) => t.radicand !== terms[i].radicand);
+        if (index >= 0) rows.push(radicalText(operands[index]) + ' = ' + blank('factor', terms[index].coefficient) + '√' + terms[index].radicand);
+        else if (raw.coefficient !== 1 || operands[1].coefficient !== 1) rows.push('相同根號：√' + a.radicand + ' × √' + a.radicand + ' = ' + blank('pair', a.radicand));
+      } else {
+        q.stage2Hint = '把兩個根號內的共同因數配成平方，不必先算出完整乘積；根號外係數最後一起乘。';
+        const square = answer.coefficient / (raw.coefficient * operands[1].coefficient);
+        rows.push('根號內配平方：' + raw.radicand + ' × ' + operands[1].radicand + ' = ' + blank('square', square ** 2) + ' × ' + answer.radicand);
+      }
+      q.stage2Ans.ans2 = { type: 'radical', expected: { ...answer }, form: 'simplest' };
+      rows.push('最後最簡答案 = [input:ans2]');
+      q.stage2Markup = rows.map(row => '<div class="w-full text-center leading-relaxed">' + row + '</div>').join('');
+      return q;
+    }
+
+    function radicalCandidates() {
+      const bank = [];
+      const term = (c, r) => ({ coefficient: c, radicand: r });
+      const add = (type, subtype, band, ops, op, strategy) => bank.push(makeRadicalQuestion(type, subtype, band, ops, op, strategy));
+      for (const r of [2, 3, 5]) {
+        for (const n of [2, 3, 4, 5, 6, 8, 10]) {
+          add('simplify', 'square-factor', 'basic', [term(1, n*n*r)], '√', n*n + '＝' + n + '²，先取出平方因數');
+        }
+        for (const n of [12, 15, 20]) {
+          if (n*n*r <= 1200) add('simplify', 'large-square', 'medium', [term(1, n*n*r)], '√', '辨識熟悉平方 ' + n*n + '＝' + n + '²，再保留 √' + r);
+        }
+        for (const n of [7, 11, 14]) {
+          add('simplify', 'hidden-square', 'challenge', [term(1, n*n*r)], '√', '辨識 ' + n*n + '×' + r + ' 的平方結構；不做逐一試除');
+        }
+        for (const n of [2, 3, 4, 5]) for (const c of [2, 3]) {
+          add('simplify', 'outer-coefficient', 'medium', [term(c, n*n*r)], '√', '取出 ' + n + '，再與外係數 ' + c + ' 相乘');
+        }
+        for (const l of [1, 2, 3, 4, 5, 6]) for (const h of [2, 3, 4, 5, 7]) for (const op of ['+', '−']) {
+          if (l === h) continue;
+          add('add-subtract', 'direct', 'basic', [term(l, r), term(h, r)], op, '同類方根只合併係數 ' + l + op + h);
+        }
+        for (const n of [2, 3, 4, 5]) for (const c of [1, 3, 5, 7]) for (const op of ['+', '−']) {
+          if (n === c) continue;
+          add('add-subtract', 'one-simplify', 'medium', [term(1, n*n*r), term(c, r)], op, '先取出平方因數 ' + n*n + '，再合併係數');
+        }
+        for (const n of [2, 3, 4, 5, 6]) for (const m of [2, 3, 4, 5, 6]) for (const op of ['+', '−']) {
+          if (n === m) continue;
+          add('add-subtract', 'both-simplify', 'challenge', [term(1, n*n*r), term(1, m*m*r)], op, '辨識 ' + n*n + ' 與 ' + m*m + ' 兩個平方，合併同類係數');
+        }
+        // 少量零結果，兩項寫法不同；不靠相同題面直接相消。
+        for (const n of [2, 3, 4, 5]) add('add-subtract', 'zero', 'medium', [term(1, n*n*r), term(n, r)], '−', '化簡後發現兩項完全相同，相減為零');
+        for (const n of [1, 2, 3, 4]) {
+          add('multiply-divide', 'integer-product', n === 1 ? 'basic' : 'medium', [term(1,r), term(1,n*n*r)], '×', n === 1 ? '相同根號相乘，直接得到根號內的數' : '先把第二項化為同類根號，√' + r + '×√' + r + '＝' + r);
+          add('multiply-divide', 'outer-product', 'medium', [term(2,r), term(1,n*n*r)], '×', '先化簡第二項，同根相乘，再合併小係數');
+        }
+      }
+      for (const n of [2,3,4,5,6,7,8,9,10,12,15,20]) add('simplify', 'perfect-square', 'basic', [term(1,n*n)], '√', '直接反查 ' + n + '²；一步完成，不額外拆解');
+      for (const [g,u,v] of [[2,1,3],[2,1,5],[3,1,2],[3,1,5],[5,1,2],[5,1,3],[2,3,5],[3,2,5],[5,2,3]]) {
+        for (const c of [1,2]) {
+          add('multiply-divide', c === 1 ? 'radical-product' : 'outer-product', u === 1 ? (c === 1 ? 'basic' : 'medium') : (c === 1 ? 'medium' : 'challenge'), [term(c,g*u),term(1,g*v)], '×', '共同因數 ' + g + ' 配成 ' + g + '²，留下 √' + u*v + (c === 2 ? '，外係數乘 2' : ''));
+        }
+      }
+      for (const b of [2,3,5,6]) for (const k of [2,3,4,5,10,15]) for (const r of [1,2,3]) {
+        if (b*k*k*r > 900) continue;
+        const band = r === 1 && k <= 5 ? 'basic' : 'medium';
+        add('multiply-divide', 'quotient', band, [term(1,b*k*k*r),term(1,b)], '÷', '根號內先除成 ' + k*k + (r === 1 ? '' : '×' + r) + '，再開根號');
+      }
+      for (const b of [2,3,5]) for (const k of [4,6,8]) for (const r of [1]) {
+        if (b*k*k*r > 600) continue;
+        add('multiply-divide', 'outer-quotient', 'challenge', [term(1,b*k*k*r),term(2,b)], '÷', '根號內先除、取出 ' + k + '，再除以外係數 2；全程整數');
+      }
+      return bank;
+    }
+
+    // 延後建庫，避免影響舊五關的初始化與亂數序列。
+    let radicalBank = null;
+    function buildRadicalQuestions(count) {
+      const quotas = {
+        10: [[1,2,0],[2,1,1],[1,1,1]],
+        20: [[2,3,1],[4,2,2],[2,3,1]],
+        30: [[3,4,2],[5,4,3],[4,4,1]]
+      }[count];
+      if (!quotas) throw new Error('根式特訓題數須為 10、20 或 30');
+      if (!radicalBank) radicalBank = radicalCandidates();
+      const types = ['simplify','add-subtract','multiply-divide'], bands = ['basic','medium','challenge'];
+      const used = new Set(), selected = [], subtypeUse = {}, answerUse = {}, operatorUse = {};
+      const slots = [];
+      quotas.forEach((row,i) => row.forEach((n,j) => { for(let k=0;k<n;k++) slots.push([types[i],bands[j]]); }));
+      // 每格均有足夠候選；按配額逐格無放回選題，不放寬去重。
+      for (const [type,band] of slots) {
+        const candidates = shuffled(radicalBank.filter(q => q.presentationType === type && q.difficultyBand === band && !used.has(q.questionKey)));
+        const score = q => (subtypeUse[q.subtype] || 0)*20 + (answerUse[radicalText(q.stage1Ans.ans.expected)] || 0)*5
+          + (operatorUse[q.operator] ? 1000 + operatorUse[q.operator]*12 : 0);
+        candidates.sort((a,b) => score(a)-score(b));
+        const q = candidates[0];
+        if (!q) throw new Error('根式候選題庫不足');
+        selected.push(q); used.add(q.questionKey);
+        subtypeUse[q.subtype] = (subtypeUse[q.subtype] || 0)+1;
+        answerUse[radicalText(q.stage1Ans.ans.expected)] = (answerUse[radicalText(q.stage1Ans.ans.expected)] || 0)+1;
+        operatorUse[q.operator] = (operatorUse[q.operator] || 0)+1;
+      }
+      // 加減、乘除各至少兩題，優先選尚未出現的運算；候選庫的每個相關格位均涵蓋兩種運算。
+      if (!['+','−','×','÷'].every(op => selected.some(q => q.operator === op))) throw new Error('根式四則覆蓋不足');
+      const remaining = shuffled(selected), ordered = [];
+      while (remaining.length) {
+        const previous = ordered[ordered.length-1], before = ordered[ordered.length-2];
+        const score = q => !previous ? 0 : (q.subtype === previous.subtype ? (before && before.subtype === q.subtype ? 100 : 8) : 0)
+          + (q.difficultyBand === previous.difficultyBand ? 4 : 0)
+          + (radicalText(q.stage1Ans.ans.expected) === radicalText(previous.stage1Ans.ans.expected) ? 10 : 0)
+          + (q.stage1Ans.ans.expected.radicand === previous.stage1Ans.ans.expected.radicand ? 3 : 0);
+        remaining.sort((a,b) => score(a)-score(b));
+        // 每場取得獨立可變題目資料，遊戲的 stage/firstTry 等欄位不能污染候選庫。
+        ordered.push(JSON.parse(JSON.stringify(remaining.shift())));
+      }
+      return ordered;
+    }
+
     function buildQuestions(difficulty, count) {
+      if (difficulty === 'radicals') return buildRadicalQuestions(count);
       if (difficulty === 'pythagorean') return buildPythagoreanQuestions(count);
       const qs = [];
       for (let i = 0; i < count; i++) {
@@ -2111,11 +2297,15 @@
     }
 
     function getDiagnosis(perfectRate) {
+      if (perfectRate === 100 && state.difficulty === 'radicals') return '✨ 根式特訓全數首次答對！繼續找平方因數、同類方根與乘除捷徑，建立心算直覺。';
       if (perfectRate === 100) return "✨ 完美神算手！你今天展現了驚人的專注力與精準的數感！無論是常數特徵、因數配對、去括號移項還是幾何縮放，都沒有被 any 陷阱迷惑。繼續保持，數學對你來說太簡單了！";
       let worstCategory = "", maxErrors = 0;
       for (const [cat, count] of Object.entries(state.errorLog)) { if (count > maxErrors) { maxErrors = count; worstCategory = cat; } }
 
       const diagnosisMap = {
+        'Radical_Simplify': '💡 根式化簡：先找熟悉的完全平方因數，開根號後與外係數相乘；最後確認根號內已無平方因數。',
+        'Radical_AddSubtract': '💡 同類方根加減：先化簡，根號內相同才合併係數；根號內的數不能直接相加減，減法還要確認正負號。',
+        'Radical_MultiplyDivide': '💡 根式乘除：相乘先找共同因數配成平方；相除先簡化根號內的除法，再處理根號外係數。',
         'Pythagorean_Add': '💡 畢氏定理練習重點：求斜邊時，先把兩股分別平方再相加，得到的是斜邊的平方；最後還要找出對應的正邊長。',
         'Pythagorean_Subtract': '💡 畢氏定理練習重點：求另一股時，要用斜邊的平方減去已知股的平方；平方差是未知股的平方，還不是邊長。',
         'Pythagorean_Model': '💡 生活應用練習重點：先找互相垂直的兩股，直角對面才是斜邊。求斜邊用平方相加，求另一股用平方相減，再由平方求正邊長。',
@@ -2245,7 +2435,7 @@
       const challengeLabels = {
         1: '挑戰 1：基礎四則 & 指數', 2: '挑戰 2：一元一次方程式',
         3: '挑戰 3：乘法公式巧算', 4: '挑戰 4：常用數感特訓',
-        pythagorean: '畢氏定理特訓'
+        pythagorean: '畢氏定理特訓', radicals: '根式運算特訓'
       };
       document.getElementById('difficulty-label').textContent = challengeLabels[state.difficulty];
       
