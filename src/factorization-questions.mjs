@@ -87,9 +87,12 @@ function question(type, difficultyBand, { k, a, b, d }, random) {
     questionKey: expected.join(','), stage1Ans: { ans: spec() }, stage2Ans: {},
     steps: []
   };
-  function integer(key, prompt, value, hints, solution) {
-    q.stage2Ans[key] = { type: 'integer', expected: value };
+  function step(key, prompt, answerSpec, hints, solution) {
+    q.stage2Ans[key] = answerSpec;
     q.steps.push({ key, prompt, hints, solution });
+  }
+  function integer(key, prompt, value, hints, solution) {
+    step(key, prompt, { type: 'integer', expected: value }, hints, solution);
   }
   if (type === 'common' || type === 'common-composite') {
     if (k !== 1) integer('content', '兩個係數的最大公因數是多少？', k,
@@ -112,21 +115,24 @@ function question(type, difficultyBand, { k, a, b, d }, random) {
       `${middle} ÷ 2 = ${b}，平方後正好得到常數 ${constant}。`);
   } else if (type === 'cross') {
     Object.assign(q, cardsFor(a, b, d, random));
-    integer('crossA', `找出配對後，用 ${a}x 乘另一張卡的常數。所得 x 項係數是多少？`, a*d,
-      ['先找能配出首項的兩張卡。', '兩張卡的常數相乘也要吻合末項。', `試配後，把兩個交叉乘積的係數相加，應為 ${middle}。`],
+    step('cardPair', '選出相乘能得到題目的兩張卡。', { type: 'card-pair', expected: q.correctPair },
+      ['先看兩張卡的 x 項相乘能否得到首項。', '再檢查兩個常數相乘的大小和正負號。',
+        `若有多組都符合，檢查兩個交叉乘積的係數和是否為 ${middle}。`],
+      `選「${linear(a, b)}」和「${linear(1, d)}」。首項係數是 ${a}，常數積是 ${constant}，交叉項的係數和是 ${middle}。`);
+    integer('crossA', `用「${linear(a, b)}」的 ${a}x 乘「${linear(1, d)}」的常數。所得 x 項係數是多少？`, a*d,
+      ['從題目指定的 x 項沿對角線找到另一張的常數。', '先看兩數的符號，決定乘積的正負。',
+        `算 ${a} × (${d})，填入帶符號的係數。`],
       `係數 ${a} 乘常數 ${d}，得到 ${a*d}。`);
-    integer('crossB', '另一個交叉乘積的 x 項係數是多少？', b,
+    integer('crossB', `用「${linear(a, b)}」的常數乘「${linear(1, d)}」的 x 項。所得 x 項係數是多少？`, b,
       ['改沿另一條對角線相乘。', '另一張卡的 x 係數是 1。', '用一次項係數減去剛算出的交叉乘積係數。'],
       `另一個係數是 ${b} × 1 = ${b}，兩者相加得到 ${middle}。`);
   } else {
     const small = Math.min(b, d), large = Math.max(b, d);
-    integer('smaller', `哪兩個整數的和為 ${middle}、積為 ${constant}？先填較小的數。`, small,
+    step('numberPair', `哪兩個整數的和為 ${middle}、積為 ${constant}？兩格一起送出，順序不限。`,
+      { type: 'sum-product', sum: middle, product: constant },
       ['先列常數絕對值的正因數配對。', constant < 0 ? '積是負數，兩數異號。' : '積是正數，兩數同號。',
         '逐對試加，留下和等於一次項係數的那一對。'],
-      `${small} 與 ${large} 相乘為 ${constant}，相加為 ${middle}，較小的是 ${small}。`);
-    integer('larger', '配對中較大的數是多少？', large,
-      ['利用兩數的和。', '從一次項係數減去較小的數。', '再將兩數相乘，檢查常數項。'],
-      `${middle} − (${small}) = ${large}。`);
+      `${small} 與 ${large} 相加為 ${middle}，相乘為 ${constant}，兩個條件都成立。`);
   }
   q.steps.push({ key: 'ans2', prompt: '請自行輸入完整因式分解。' });
   q.stage2Ans.ans2 = spec();

@@ -10,7 +10,7 @@ npm test
 
 ## 測試方式及範圍
 
-- `factorization-answer.test.cjs` 與 `factorization-generator.test.cjs`：第七關獨立模組的四類判定、語法與運算界線，以及 300 場共 6,000 題的固定種子驗算。從題面重新求整數根，核對完整分解、訂正步驟與每道挑戰題的 15 種卡片配對。[可重現的人工審查樣本](../docs/factorization-review-samples.md)亦由測試檢查是否過期。
+- `factorization-answer.test.cjs` 與 `factorization-generator.test.cjs`：第七關獨立模組的四類判定、語法與運算界線，以及 300 場共 6,000 題的固定種子驗算。從題面重新求整數根，核對完整分解、訂正步驟與每道挑戰題的 15 種卡片配對。另驗證和積同時送出、兩格交換，以及錯選卡片時停在選卡步、配對確認後才判定帶符號的交叉乘積。[可重現的人工審查樣本](../docs/factorization-review-samples.md)亦由測試檢查是否過期。
 
 - `radicals.test.cjs`：專用根式／嚴格整數判定、語法與安全邊界、數學等值與最簡形式、6,003 組獨立精確驗算，以及型別安全分派、混合欄位、首次資格、兩階段生命週期回歸、根號鍵盤與實體鍵盤切換、長度上限、頂線安全渲染與引導題數統計。正式題庫另由 radical-generator.test.cjs 驗證。
 
@@ -41,7 +41,7 @@ BUG-01/02（重複加星與換題）、BUG-03/04（舊換題與訂正計時器�
 
 BUG-01/02 的原案例直接測試判定函式重入；生命週期測試另涵蓋正式 keydown handler、pressKey 與 focusInput 入口。BUG-03/04 使用正式 `confirmExit` → `startGame` 路徑。DOM 替身只派送 JavaScript 事件回呼，不模擬真實瀏覽器預設按鍵行為或裝置觸控。
 
-目前完整結果應為 **95 pass、0 fail、4 todo、0 skipped**（原有 88 項與因式分解 7 項通過）。TODO 斷言失敗會顯示診斷，但整體退出碼仍為 0，CI 維持綠燈。這不是 Bug 已修正的證明。修正某項後，移除對應 `todo` 選項，使其成為一般回歸測試，並更新此表；Node 的 TODO 意外通過也不會自動使 CI 失敗，維護時須檢查 TODO 明細。若要讓所有現有 TODO 暫時成為阻擋測試，可在本機暫時移除標記後執行，不應在未修正時提交這種改動。
+目前完整結果應為 **97 pass、0 fail、4 todo、0 skipped**（原有 88 項與因式分解 9 項通過）。TODO 斷言失敗會顯示診斷，但整體退出碼仍為 0，CI 維持綠燈。這不是 Bug 已修正的證明。修正某項後，移除對應 `todo` 選項，使其成為一般回歸測試，並更新此表；Node 的 TODO 意外通過也不會自動使 CI 失敗，維護時須檢查 TODO 明細。若要讓所有現有 TODO 暫時成為阻擋測試，可在本機暫時移除標記後執行，不應在未修正時提交這種改動。
 
 ## CI 與限制
 

@@ -1,6 +1,7 @@
 const { readFileSync, writeFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 const { buildFactorizationQuestions } = require('../src/factorization-questions.mjs');
+const { checkFactorizationCorrection } = require('../src/factorization-correction.mjs');
 const { seededRandom } = require('../tests/helpers/app.cjs');
 const { solvePrompt } = require('../tests/helpers/factorization-oracle.cjs');
 
@@ -17,12 +18,31 @@ questions.forEach((q,i) => {
   if (q.cards) rows.push(`- 第 ${i+1} 題依序為 ${q.cards.join('、')}。審查用正解為第 ${q.correctPair.map(n => n+1).join('、')} 張。`);
 });
 rows.push('', '## 訂正試讀', '');
+function showAttempt(q, responses, description) {
+  const { key, status } = checkFactorizationCorrection(q, responses);
+  rows.push(`- ${description} → \`${key} / ${status}\``);
+}
 for (const band of Object.keys(bands)) {
   const q = questions.find(item => item.difficultyBand === band);
   rows.push('### '+q.tag+'　'+q.formula, '');
   for (const step of q.steps) {
     rows.push('- '+step.prompt);
     if (step.hints) rows.push('  - '+step.hints.join(' → '), '  - 本步解法　'+step.solution);
+  }
+  if (q.stage2Ans.numberPair) {
+    const { small, large } = solvePrompt(q.formula);
+    rows.push('', '試填兩格', '');
+    showAttempt(q, { numberPair: [small, ''] }, `只填 ${small}，另一格留白`);
+    showAttempt(q, { numberPair: [small-1, large+1] }, `填 ${small-1}、${large+1}，只有和吻合`);
+    showAttempt(q, { numberPair: [large, small] }, `填 ${large}、${small}，進入完整分解輸入`);
+  }
+  if (q.cards) {
+    const wrong = q.correctPair.map(i => q.cards.indexOf(q.cards[i].replace(/[+−]/, sign => sign === '+' ? '−' : '+')));
+    const labels = indices => indices.map(i => q.cards[i]).join('、');
+    rows.push('', '試選卡片', '');
+    showAttempt(q, { cardPair: wrong }, `選 ${labels(wrong)}，留在選卡步重新配對`);
+    const cardPair = q.correctPair.slice().reverse();
+    showAttempt(q, { cardPair }, `改選 ${labels(cardPair)}，開始計算已確認卡片的交叉項`);
   }
   rows.push('');
 }

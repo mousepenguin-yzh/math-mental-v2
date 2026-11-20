@@ -1,6 +1,6 @@
 # 因式分解特訓 V1
 
-PR 1 提供兩個可在瀏覽器與 Node 匯入的純 JavaScript 模組。正式首頁與作答流程仍由既有六關使用。
+PR 1 提供可在瀏覽器與 Node 匯入的純 JavaScript 模組。正式首頁與作答流程仍由既有六關使用。
 
 ## 題庫與訂正
 
@@ -14,7 +14,20 @@ PR 1 提供兩個可在瀏覽器與 Node 匯入的純 JavaScript 模組。正式
 
 題目含 `levelId: 'factorization'`、純文字 `formula`、`questionKey`、`subtype`、`difficultyBand`、`tag`。挑戰題另附六張相異的 `cards`，以及從 0 起算、由小到大排列的 `correctPair`。每場產生獨立的可變物件。
 
-`stage1Ans.ans` 與 `stage2Ans.ans2` 使用相同的數學規格。訂正按 `steps` 順序顯示，各步的 `key` 對應 `stage2Ans` 欄位。中間步有整數答案、`prompt`、三條遞進的 `hints` 與本步 `solution`。最後一步僅要求學生自行輸入完整分解；選對卡片或完成中間值都不能取代最後作答。PR 2 可依學生操作逐步顯示這些資料。
+`stage1Ans.ans` 與 `stage2Ans.ans2` 使用相同的數學規格。各訂正步的 `key` 對應 `stage2Ans` 規格。中間步附 `prompt`、三條依序揭露的 `hints` 與學生主動查看的本步 `solution`。查看解法後仍須送出本步答案。最後一步要求學生自行輸入完整分解。
+
+### 訂正步驟的判定與揭露
+
+PR 2 可從 `src/factorization-correction.mjs` 匯入純函式 `checkFactorizationCorrection(question, responses)`。傳入以步驟 key 為鍵的作答物件，函式依序重驗並回傳第一個待處理的 `{ key, status }`。介面只揭露到該步的題目與提示，解法由學生自行開啟。先前步驟改答時，清空其後的輸入並重新判定。
+
+| 步驟 | 輸入與判定 |
+| --- | --- |
+| `numberPair` | 首一與正負配對共用 `sum-product` 規格。一次傳兩個整數，例如 `{ numberPair: ['6', '2'] }`。缺一格回傳 `incomplete`。和與積須同時吻合，交換順序也通過。合法但未吻合只回傳整組 `incorrect`。 |
+| `cardPair` | 傳入兩張卡片的數字索引，從 0 起算，順序任意。可沿用學生初選。兩張相異的合法卡片若配錯，回傳 `wrong-pair`，提示重新配對。此時停在選卡步。 |
+| `crossA`、`crossB` | 通過選卡後才依序檢查兩個帶符號的整數。題幹寫出兩張卡及所乘的項，點選次序不影響方向。其餘單整數步驟也以 key 傳入。 |
+| `ans2` | 傳入學生輸入的完整算式。等值未分完回傳 `equivalent-not-factored`，只有完整答對會回傳 `{ key: 'ans2', status: 'complete' }`。 |
+
+缺答或尚未輸完為 `incomplete`，非法語法、數值超界、重複或越界卡片為 `invalid`。例如針對 2x²−7x−4，試選「2x−1」和「x+4」時交叉項係數 8、−1 算得正確，但兩者和為 7。此時回饋針對卡片配對。改選「2x+1」和「x−4」後，才會依序詢問這組卡的 −8、1。
 
 ## 判定接口
 
