@@ -95,13 +95,23 @@ function question(type, difficultyBand, { k, a, b, d }, random) {
     step(key, prompt, { type: 'integer', expected: value }, hints, solution);
   }
   if (type === 'common' || type === 'common-composite') {
-    if (k !== 1) integer('content', '兩個係數的最大公因數是多少？', k,
-      ['先看數字部分。', '列出首項係數的因數。', '由大到小找也能整除一次項係數的數。'],
-      `同時能整除 ${leading} 和 ${Math.abs(middle)} 的最大正整數是 ${k}。`);
     const outside = linear(k, 0);
-    integer('innerConstant', `提出 ${outside} 後，括號裡的常數是多少？`, b,
-      ['找出每一項都有的 x。', '一次項除去公因式後只剩常數。', `把一次項係數 ${middle} 除以 ${k}，保留正負號。`],
-      `${linear(middle, 0)} ÷ (${outside}) 的商是 ${b}。`);
+    const hints = k === 1
+      ? [
+        '觀察兩項的係數與文字部分，看看都有哪些共同因式。',
+        '兩項係數的最大公因數是 1，而且兩項都含有 x。',
+        '一次項只有一個 x，所以兩項的最大公因式是 x。',
+      ]
+      : [
+        '先找兩個係數的最大公因數，再看兩項共同含有的 x。',
+        `找出能同時整除 ${leading} 和 ${Math.abs(middle)} 的最大正整數。`,
+        `數字最大公因數是 ${k}，加上兩項都有的 x，合起來寫成 ${outside}。`,
+      ];
+    const solution = k === 1
+      ? `兩項係數 1 與 ${Math.abs(middle)} 的最大公因數是 1，且兩項都含有 x，所以最大公因式是 x。`
+      : `同時能整除 ${leading} 和 ${Math.abs(middle)} 的最大正整數是 ${k}，且兩項都含有 x，所以最大公因式是 ${outside}。`;
+    step('gcf', '這兩項的最大公因式（含數字與 x）是多少？',
+      { type: 'monomial', expected: { coefficient: k, degree: 1 } }, hints, solution);
   } else if (type === 'difference' || type === 'two-step') {
     if (type === 'two-step') integer('content', '先提出哪個最大的正整數公因數？', k,
       ['留意首項和常數。', '首項係數也可能整除常數。', '試著把兩項都除以首項係數。'],
@@ -115,17 +125,14 @@ function question(type, difficultyBand, { k, a, b, d }, random) {
       `${middle} ÷ 2 = ${b}，平方後正好得到常數 ${constant}。`);
   } else if (type === 'cross') {
     Object.assign(q, cardsFor(a, b, d, random));
-    step('cardPair', '選出相乘能得到題目的兩張卡。', { type: 'card-pair', expected: q.correctPair },
-      ['先看兩張卡的 x 項相乘能否得到首項。', '再檢查兩個常數相乘的大小和正負號。',
-        `若有多組都符合，檢查兩個交叉乘積的係數和是否為 ${middle}。`],
-      `選「${linear(a, b)}」和「${linear(1, d)}」。首項係數是 ${a}，常數積是 ${constant}，交叉項的係數和是 ${middle}。`);
-    integer('crossA', `用「${linear(a, b)}」的 ${a}x 乘「${linear(1, d)}」的常數。所得 x 項係數是多少？`, a*d,
-      ['從題目指定的 x 項沿對角線找到另一張的常數。', '先看兩數的符號，決定乘積的正負。',
-        `算 ${a} × (${d})，填入帶符號的係數。`],
-      `係數 ${a} 乘常數 ${d}，得到 ${a*d}。`);
-    integer('crossB', `用「${linear(a, b)}」的常數乘「${linear(1, d)}」的 x 項。所得 x 項係數是多少？`, b,
-      ['改沿另一條對角線相乘。', '另一張卡的 x 係數是 1。', '用一次項係數減去剛算出的交叉乘積係數。'],
-      `另一個係數是 ${b} × 1 = ${b}，兩者相加得到 ${middle}。`);
+    step('crossCheck', '選兩張卡片，依「首項 → 常數 → 交叉項係數」檢驗配對。',
+      { type: 'cross-check', expectedPair: q.correctPair, expectedMiddle: middle },
+      [
+        `① 先看首項：兩張卡的 x 項相乘要等於 ${leading}x²，所以要選一張 ${a}x 開頭、一張 x 開頭的卡。`,
+        `② 再看常數：兩張卡的常數相乘要等於 ${constant}（${constant < 0 ? '積為負，兩常數異號' : '積為正，兩常數同號'}）。`,
+        `③ 最後驗交叉項：外項係數加內項係數要等於 ${middle}；若算出的數只差正負號，試著把兩張卡的常數正負號互換。`,
+      ],
+      `選「${linear(a, b)}」和「${linear(1, d)}」：首項 ${a}x×x=${leading}x²，常數 (${b})×(${d})=${constant}，交叉項係數 ${a*d}+(${b})=${middle}。`);
   } else {
     const small = Math.min(b, d), large = Math.max(b, d);
     step('numberPair', `哪兩個整數的和為 ${middle}、積為 ${constant}？兩格一起送出，順序不限。`,

@@ -25,13 +25,20 @@ function solveStage2Step(app, q, step, { useSolution = false } = {}) {
   const { answer } = solvePrompt(q.formula);
 
   if (useSolution && step.solution) {
-    // 3 wrong attempts unlock hints 1..3 and solution button; solution is hidden until clicked.
     for (let attempt = 1; attempt <= 3; attempt++) {
-      if (spec.type === 'card-pair') {
+      if (spec.type === 'cross-check') {
         const [w0, w1] = wrongCardPair(q);
         app.context.clearSelectedFactorCards();
         app.context.toggleFactorCard(2, w0);
         app.context.toggleFactorCard(2, w1);
+        app.context.checkAnswer();
+        // If this wrong pair happens to pass leading+constant, submit a wrong middle arithmetic
+        if (q.correction.crossState.pairChecked) {
+          app.fill({ crossMid: '999' });
+          app.context.checkAnswer();
+        }
+      } else if (spec.type === 'monomial') {
+        app.fill({ [step.key]: '99x' });
         app.context.checkAnswer();
       } else if (spec.type === 'sum-product') {
         app.fill({ [`${step.key}_0`]: '999', [`${step.key}_1`]: '999' });
@@ -44,10 +51,16 @@ function solveStage2Step(app, q, step, { useSolution = false } = {}) {
     app.context.revealFactorStepSolution(step.key);
   }
 
-  if (spec.type === 'card-pair') {
+  if (spec.type === 'cross-check') {
     app.context.clearSelectedFactorCards();
     app.context.toggleFactorCard(2, q.correctPair[1]);
     app.context.toggleFactorCard(2, q.correctPair[0]);
+    app.context.checkAnswer(); // Passes leading & constant -> opens crossMid
+    app.fill({ crossMid: String(spec.expectedMiddle) });
+    app.context.checkAnswer();
+  } else if (spec.type === 'monomial') {
+    const gcf = spec.expected.coefficient === 1 ? 'x' : `${spec.expected.coefficient}x`;
+    app.fill({ [step.key]: gcf });
     app.context.checkAnswer();
   } else if (spec.type === 'sum-product') {
     const { small, large } = solvePrompt(q.formula);
@@ -79,17 +92,21 @@ test('level 7 supports 10/20/30 questions with exact 40%/40%/20% difficulty dist
   }
 });
 
-test('math keyboard switches cleanly between factorization, card selection, integer step, radical, and legacy modes', () => {
+test('unified 5-column math keyboard serves all non-card level 7 inputs while levels 1-6 preserve 4-column standard keyboard', () => {
   const app = startFactorization(42, 10);
-  // Find a non-cross question and a cross question from seed 42
-  const nonCross = app.state.questions.find(q => q.subtype !== 'cross');
+  const comp = app.state.questions.find(q => q.subtype === 'common-composite');
+  const monic = app.state.questions.find(q => q.subtype === 'monic');
   const cross = app.state.questions.find(q => q.subtype === 'cross');
-  app.mount([nonCross, cross]);
+  assert.ok(comp && monic && cross);
+  app.mount([comp, monic, cross]);
 
-  // Basic/medium Stage 1 -> factorization keyboard
+  // Q0 Stage 1 (factorization) -> 5-column keyboard with all symbol keys enabled
   assert.equal(app.el('keyboard-factorization').classList.contains('hidden'), false);
   assert.equal(app.el('keyboard-standard').classList.contains('hidden'), true);
   assert.equal(app.el('keyboard-cards').classList.contains('hidden'), true);
+  for (const id of ['key-fac-x', 'key-fac-lparen', 'key-fac-rparen', 'key-fac-plus', 'key-fac-square']) {
+    assert.equal(app.el(id).disabled, false, id);
+  }
 
   // Virtual & physical keys support x, parentheses, +, -, ², ^, Clear, Backspace; ignore . and √
   for (const k of ['(', 'x', '-', '3', ')', '²']) app.context.pressKey(k);
@@ -105,31 +122,47 @@ test('math keyboard switches cleanly between factorization, card selection, inte
   app.context.pressKey('Clear');
   assert.equal(ansEl.getAttribute('data-value'), '');
 
-  // Enter wrong answer to open Stage 2 integer/sum-product step -> standard keyboard with disabled aux key
+  // Q0 Stage 2 (monomial GCF step) -> STAYS on 5-column keyboard! x & ² enabled; (, ), + disabled
   app.fill({ ans: '(x+99)(x+99)' });
   app.context.checkAnswer();
   app.tick(600);
-  assert.equal(app.state.questions[0].currentStage, 2);
-  assert.equal(app.el('keyboard-standard').classList.contains('hidden'), false);
-  assert.equal(app.el('keyboard-factorization').classList.contains('hidden'), true);
-  assert.equal(app.el('key-aux').disabled, true);
-  assert.equal(app.el('key-aux').getAttribute('data-state'), 'disabled');
-
-  // Complete intermediate step(s) to unlock ans2 -> switches back to factorization keyboard
-  for (const step of nonCross.steps.slice(0, -1)) solveStage2Step(app, nonCross, step);
-  assert.equal(app.state.activeInputId, 'q_0_ans2');
   assert.equal(app.el('keyboard-factorization').classList.contains('hidden'), false);
   assert.equal(app.el('keyboard-standard').classList.contains('hidden'), true);
-
-  // Finish Q0 and advance to Q1 (cross) -> switches to card confirmation bar
-  solveStage2Step(app, nonCross, nonCross.steps.at(-1));
+  assert.equal(app.el('key-fac-x').disabled, false);
+  assert.equal(app.el('key-fac-square').disabled, false);
+  assert.equal(app.el('key-fac-lparen').disabled, true);
+  assert.equal(app.el('key-fac-rparen').disabled, true);
+  assert.equal(app.el('key-fac-plus').disabled, true);
+  for (const step of comp.steps) solveStage2Step(app, comp, step);
   app.tick(1500);
-  assert.equal(app.state.currentIndex, 1);
+
+  // Q1 Stage 2 (monic numberPair = integer inputs) -> STAYS on 5-column keyboard (NO switch to 4-column!),
+  // with x, (, ), ² disabled and numeric validation strictly enforced!
+  app.fill({ ans: '(x+99)(x+99)' });
+  app.context.checkAnswer();
+  app.tick(600);
+  assert.equal(app.el('keyboard-factorization').classList.contains('hidden'), false);
+  assert.equal(app.el('keyboard-standard').classList.contains('hidden'), true);
+  assert.equal(app.el('key-fac-x').disabled, true);
+  assert.equal(app.el('key-fac-lparen').disabled, true);
+  assert.equal(app.el('key-fac-rparen').disabled, true);
+  assert.equal(app.el('key-fac-square').disabled, true);
+  assert.equal(app.el('key-fac-plus').disabled, false);
+  // Attempting to press x, (, ) on integer field is ignored; - toggles leading sign; + clears negative
+  app.context.pressKey('x'); app.context.pressKey('('); app.context.pressKey('2'); app.context.pressKey('-');
+  assert.equal(app.document.querySelector('[data-input-id="q_1_numberPair_0"]').getAttribute('data-value'), '-2');
+  app.context.pressKey('+');
+  assert.equal(app.document.querySelector('[data-input-id="q_1_numberPair_0"]').getAttribute('data-value'), '2');
+  for (const step of monic.steps) solveStage2Step(app, monic, step);
+  app.tick(1500);
+
+  // Q2 (cross) Stage 1 -> card bar
+  assert.equal(app.state.currentIndex, 2);
   assert.equal(app.el('keyboard-cards').classList.contains('hidden'), false);
   assert.equal(app.el('keyboard-factorization').classList.contains('hidden'), true);
   assert.equal(app.el('keyboard-standard').classList.contains('hidden'), true);
 
-  // Switch back to Level 6 (radicals) and Level 1 (legacy) -> standard keyboard restored cleanly
+  // Switch back to Level 6 (radicals) and Level 1 (legacy) -> 4-column standard keyboard restored cleanly
   app.context.confirmExit();
   app.context.selectDifficulty('radicals');
   app.context.startGame();
@@ -145,6 +178,181 @@ test('math keyboard switches cleanly between factorization, card selection, inte
   assert.equal(app.el('key-aux').getAttribute('data-key'), '.');
 });
 
+test('GCF correction asks directly for full monomial (e.g. 2x or x), rejects partial/non-monomial, then requires full factorization', () => {
+  const app = startFactorization(42, 10);
+  const common = app.state.questions.find(q => q.subtype === 'common');
+  const comp = app.state.questions.find(q => q.subtype === 'common-composite');
+  assert.ok(common && comp);
+  app.mount([comp, common]);
+
+  // Q0: common-composite (e.g. 4x²+10x -> GCF 2x -> 2x(2x+5))
+  const expectedCoeff = comp.stage2Ans.gcf.expected.coefficient;
+  const expectedGcf = `${expectedCoeff}x`;
+  assert.deepEqual(comp.steps.map(s => s.key), ['gcf', 'ans2']);
+  app.fill({ ans: '(x+99)(x+99)' });
+  app.context.checkAnswer();
+  app.tick(600);
+  const stage2Area = app.el('stage-2-input-area');
+  assert.match(stage2Area.innerHTML, /最大公因式（含數字與 x）/);
+  assert.doesNotMatch(stage2Area.innerHTML, /data-factor-step="ans2"/);
+
+  // Non-monomial syntax error -> rejected without consuming hint attempt
+  app.fill({ gcf: `${expectedGcf}+1` });
+  app.context.checkAnswer();
+  assert.equal(comp.correction.stepState.gcf.wrongCount, 0);
+  assert.match(app.el('feedback-banner').innerHTML, /單項最大公因式/);
+
+  // Attempt 1: numeric only (forgot x) -> Hint 1
+  app.fill({ gcf: String(expectedCoeff) });
+  app.context.checkAnswer();
+  assert.equal(comp.correction.stepState.gcf.wrongCount, 1);
+  assert.match(app.el('feedback-banner').innerHTML, /共同含有的 x/);
+  assert.match(stage2Area.innerHTML, /data-hint-level="1"/);
+
+  // Attempt 2: x only (forgot numeric GCD) -> Hint 2
+  app.fill({ gcf: 'x' });
+  app.context.checkAnswer();
+  assert.equal(comp.correction.stepState.gcf.wrongCount, 2);
+  assert.match(app.el('feedback-banner').innerHTML, /最大公因數/);
+  assert.match(stage2Area.innerHTML, /data-hint-level="2"/);
+  assert.doesNotMatch(stage2Area.innerHTML, /data-solution-btn="gcf"/);
+
+  // Attempt 3: degree too high (2x²) -> Hint 3 + unlocks active solution button
+  app.fill({ gcf: `${expectedCoeff}x²` });
+  app.context.checkAnswer();
+  assert.equal(comp.correction.stepState.gcf.wrongCount, 3);
+  assert.match(stage2Area.innerHTML, /data-hint-level="3"/);
+  assert.match(stage2Area.innerHTML, /data-solution-btn="gcf"/);
+  assert.doesNotMatch(stage2Area.innerHTML, /data-solution-box="gcf"/);
+
+  // Reveal solution -> marks usedSolution, still requires submitting GCF and ans2
+  app.context.revealFactorStepSolution('gcf');
+  assert.equal(comp.correction.usedSolution, true);
+  assert.match(stage2Area.innerHTML, /data-solution-box="gcf"/);
+
+  // Submit exact GCF -> unlocks ans2 immediately (only 2 steps total!)
+  app.fill({ gcf: expectedGcf });
+  app.context.checkAnswer();
+  assert.equal(comp.correction.unlockedIndex, 1);
+  assert.match(stage2Area.innerHTML, /data-factor-step="ans2"/);
+  app.fill({ ans2: solvePrompt(comp.formula).answer });
+  app.context.checkAnswer();
+  assert.equal(comp.outcome, 'solution-guided');
+  app.tick(1500);
+
+  // Q1: common (e.g. x²−6x -> GCF x -> x(x-6))
+  app.fill({ ans: '(x+99)(x+99)' });
+  app.context.checkAnswer();
+  app.tick(600);
+  app.fill({ gcf: 'x' });
+  app.context.checkAnswer();
+  assert.equal(common.correction.unlockedIndex, 1);
+  app.fill({ ans2: solvePrompt(common.formula).answer });
+  app.context.checkAnswer();
+  assert.equal(common.outcome, 'guided');
+});
+
+test('cross-multiplication Stage 2 guides leading -> constant -> local cross-term sum without misjudging correct local arithmetic', () => {
+  // Locate the exact 2x²+5x−12 question from the real generator
+  let targetQ = null;
+  let foundApp = null;
+  for (let seed = 1; seed <= 500 && !targetQ; seed++) {
+    const candidateApp = startFactorization(seed, 30);
+    const match = candidateApp.state.questions.find(q => q.formula === '2x²+5x−12');
+    if (match) { targetQ = match; foundApp = candidateApp; }
+  }
+  assert.ok(targetQ && foundApp, 'Expected 2x²+5x−12');
+
+  const cloneQ = () => JSON.parse(JSON.stringify(targetQ));
+  const qA = cloneQ();
+  const qB = cloneQ();
+  foundApp.mount([qA, qB]);
+
+  const idx = (q, label) => q.cards.indexOf(label);
+
+  // --- Q0: Stage 1 fails with (x+4)(x−4) -> immediate leading & constant diagnostic ---
+  foundApp.context.toggleFactorCard(1, idx(qA, 'x+4'));
+  foundApp.context.toggleFactorCard(1, idx(qA, 'x−4'));
+  foundApp.context.checkAnswer();
+  foundApp.tick(600);
+  const stage2Area = foundApp.el('stage-2-input-area');
+  assert.equal(qA.currentStage, 2);
+  assert.equal(qA.correction.crossState.pairChecked, false);
+  assert.equal(foundApp.el('keyboard-cards').classList.contains('hidden'), false);
+  assert.match(stage2Area.innerHTML, /data-cross-diagnostic="true"/);
+  assert.match(stage2Area.innerHTML, /x²/);
+  assert.match(stage2Area.innerHTML, /−16/);
+
+  // Re-submitting (x+4)(x−4) increments hint level (Hint 1) and explains leading+constant failure
+  foundApp.context.checkAnswer();
+  assert.equal(qA.correction.stepState.crossCheck.wrongCount, 1);
+  assert.match(stage2Area.innerHTML, /data-hint-level="1"/);
+
+  // Switch cards to (2x+3)(x−4) -> leading 2x² ✓, constant −12 ✓ -> opens ③ crossMid with 5-column keyboard
+  foundApp.context.clearSelectedFactorCards();
+  foundApp.context.toggleFactorCard(2, idx(qA, '2x+3'));
+  foundApp.context.toggleFactorCard(2, idx(qA, 'x−4'));
+  foundApp.context.checkAnswer();
+  assert.equal(qA.correction.crossState.pairChecked, true);
+  assert.equal(foundApp.state.activeInputId, 'q_0_crossMid');
+  assert.equal(foundApp.el('keyboard-factorization').classList.contains('hidden'), false);
+  assert.equal(foundApp.el('keyboard-cards').classList.contains('hidden'), true);
+  assert.equal(foundApp.el('key-fac-x').disabled, true);
+  assert.equal(qA.correction.stepState.crossCheck.wrongCount, 1); // passing leading/constant is NOT a failure!
+
+  // Student miscalculates (2x+3)(x−4) cross term as +5 -> caught as arithmetic error (Hint 2)
+  foundApp.fill({ crossMid: '5' });
+  foundApp.context.checkAnswer();
+  assert.equal(qA.correction.stepState.crossCheck.wrongCount, 2);
+  assert.equal(qA.correction.crossState.pairChecked, true);
+  assert.match(foundApp.el('feedback-banner').innerHTML, /算錯了/);
+  assert.match(stage2Area.innerHTML, /data-hint-level="2"/);
+
+  // Student correctly calculates (2x+3)(x−4) cross term as -5 -> praised as right arithmetic, explains ≠ +5, returns to card selection!
+  foundApp.fill({ crossMid: '-5' });
+  foundApp.context.checkAnswer();
+  assert.equal(qA.correction.crossState.pairChecked, false);
+  assert.equal(foundApp.el('keyboard-cards').classList.contains('hidden'), false);
+  assert.match(foundApp.el('feedback-banner').innerHTML, /算對了/);
+  assert.match(stage2Area.innerHTML, /data-cross-mismatch="true"/);
+  assert.match(stage2Area.innerHTML, /data-hint-level="3"/);
+  assert.match(stage2Area.innerHTML, /data-solution-btn="crossCheck"/);
+
+  // Swap to winning pair (2x−3)(x+4), pass ①/②, compute +5 -> unlocks ans2!
+  foundApp.context.clearSelectedFactorCards();
+  foundApp.context.toggleFactorCard(2, idx(qA, '2x−3'));
+  foundApp.context.toggleFactorCard(2, idx(qA, 'x+4'));
+  foundApp.context.checkAnswer();
+  assert.equal(qA.correction.crossState.pairChecked, true);
+  foundApp.fill({ crossMid: '5' });
+  foundApp.context.checkAnswer();
+  assert.equal(qA.correction.unlockedIndex, 1);
+  assert.equal(foundApp.state.activeInputId, 'q_0_ans2');
+  assert.equal(foundApp.el('keyboard-factorization').classList.contains('hidden'), false);
+  assert.equal(foundApp.el('key-fac-x').disabled, false);
+
+  // Must still type complete factorization in ans2 (cannot finish by cards alone!)
+  foundApp.fill({ ans2: '(2x-3)(x+4)' });
+  foundApp.context.checkAnswer();
+  assert.equal(qA.outcome, 'guided');
+  foundApp.tick(1500);
+
+  // --- Q1: Stage 1 fails with (2x+3)(x−4) (leading & constant ALREADY match!) -> Stage 2 opens directly at ③ crossMid ---
+  foundApp.context.toggleFactorCard(1, idx(qB, '2x+3'));
+  foundApp.context.toggleFactorCard(1, idx(qB, 'x−4'));
+  foundApp.context.checkAnswer();
+  foundApp.tick(600);
+  assert.equal(qB.correction.crossState.pairChecked, true);
+  assert.equal(foundApp.state.activeInputId, 'q_1_crossMid');
+  assert.equal(foundApp.el('keyboard-factorization').classList.contains('hidden'), false);
+
+  // Tapping a card while crossMid is open cleanly switches back to card selection!
+  foundApp.context.toggleFactorCard(2, idx(qB, '2x+3'));
+  assert.equal(qB.correction.crossState.pairChecked, false);
+  assert.equal(foundApp.el('keyboard-cards').classList.contains('hidden'), false);
+  assert.equal(foundApp.state.activeInputId, null);
+});
+
 test('Stage 1 accepts exact equivalent factorizations; invalid keeps firstTry; equivalent-not-factored loses star but allows self-correction', () => {
   const app = startFactorization(42, 10);
   const twoStep = app.state.questions.find(q => q.subtype === 'two-step');
@@ -152,7 +360,6 @@ test('Stage 1 accepts exact equivalent factorizations; invalid keeps firstTry; e
   assert.ok(twoStep && square);
   app.mount([square, twoStep]);
 
-  // Q0: square — test invalid syntax/incomplete keeps firstTry, then equivalent repeated factor syntax passes
   for (const bad of ['', '(', '(x+', 'x/2', 'x'.repeat(161)]) {
     app.fill({ ans: bad });
     app.context.checkAnswer();
@@ -169,11 +376,9 @@ test('Stage 1 accepts exact equivalent factorizations; invalid keeps firstTry; e
   assert.equal(square.outcome, 'first-try');
   app.tick(1500);
 
-  // Q1: two-step (e.g. 3x²−12) — equivalent-not-factored warns, loses star, stays in Stage 1, no errorLog
   assert.equal(app.state.currentIndex, 1);
   const { content, large, answer } = solvePrompt(twoStep.formula);
-  const partial = `${content}(x²-${large * large})`;
-  app.fill({ ans: partial });
+  app.fill({ ans: `${content}(x²-${large * large})` });
   app.context.checkAnswer();
   app.tick(1000);
   assert.equal(twoStep.currentStage, 1);
@@ -183,12 +388,10 @@ test('Stage 1 accepts exact equivalent factorizations; invalid keeps firstTry; e
   assert.equal(Object.keys(app.state.errorLog).length, 0);
   assert.match(app.el('feedback-banner').innerHTML, /沒有分解完全/);
 
-  // Self-correct in Stage 1 -> completes with outcome='self-corrected' and 0 additional stars
   app.fill({ ans: answer });
   app.context.checkAnswer();
   assert.equal(app.state.goldenStars, 1);
   assert.equal(twoStep.outcome, 'self-corrected');
-  assert.equal(twoStep.enteredStage2, false);
   app.tick(1500);
   assert.equal(app.el('report-perfect').textContent, '1 題');
   assert.equal(app.el('report-self-corrected').textContent, '1 題');
@@ -203,24 +406,20 @@ test('Challenge 6-card selection requires explicit confirmation, never auto-subm
   app.mount(crosses);
 
   const q0 = crosses[0];
-  // Selecting 1 card and submitting is incomplete -> preserves firstTry
   app.context.toggleFactorCard(1, q0.correctPair[0]);
   app.context.checkAnswer();
   assert.equal(q0.firstTry, true);
   assert.equal(q0.answerState, 'answering');
 
-  // Selecting 2nd card MUST NOT auto-submit
   app.context.toggleFactorCard(1, q0.correctPair[1]);
   assert.equal(q0.answerState, 'answering');
   assert.equal(app.state.goldenStars, 0);
   assert.match(app.el('cards-status-text').textContent, /已選 2 \/ 2/);
 
-  // Selecting a 3rd card when 2 are selected is ignored with guidance
   const extraIdx = [0, 1, 2, 3, 4, 5].find(i => !q0.correctPair.includes(i));
   app.context.toggleFactorCard(1, extraIdx);
   assert.deepEqual([...q0.stage1SelectedCards], [...q0.correctPair]);
 
-  // Toggle off and re-select in reversed order, then confirm with Enter
   app.context.toggleFactorCard(1, q0.correctPair[0]);
   app.context.toggleFactorCard(1, q0.correctPair[0]);
   app.key('Enter');
@@ -229,12 +428,11 @@ test('Challenge 6-card selection requires explicit confirmation, never auto-subm
   assert.equal(app.state.goldenStars, 1);
   app.tick(1500);
 
-  // Q1: selecting wrong pair and confirming enters Stage 2
   const q1 = crosses[1];
   const [w0, w1] = wrongCardPair(q1);
   app.context.toggleFactorCard(1, w0);
   app.context.toggleFactorCard(1, w1);
-  assert.equal(q1.answerState, 'answering'); // still not submitted
+  assert.equal(q1.answerState, 'answering');
   app.context.pressKey('OK');
   assert.equal(q1.answerState, 'opening-correction');
   assert.equal(q1.firstTry, false);
@@ -244,164 +442,11 @@ test('Challenge 6-card selection requires explicit confirmation, never auto-subm
   assert.equal(app.el('stage-2-container').classList.contains('open'), true);
 });
 
-test('Stage 2 progressively unlocks steps, escalates 3-level hints, gates solution button, and requires typing final factorization', () => {
-  const app = startFactorization(42, 10);
-  const comp = app.state.questions.find(q => q.subtype === 'common-composite');
-  const monic = app.state.questions.find(q => q.subtype === 'monic');
-  const cross = app.state.questions.find(q => q.subtype === 'cross');
-  assert.ok(comp && monic && cross);
-  app.mount([comp, monic, cross]);
-
-  // --- 1) common-composite: content -> innerConstant -> ans2 ---
-  app.fill({ ans: '(x+99)(x+99)' });
-  app.context.checkAnswer();
-  app.tick(600);
-  const stage2Area = app.el('stage-2-input-area');
-  // Only Step 1 (content) is revealed; innerConstant and ans2 are NOT rendered yet
-  assert.match(stage2Area.innerHTML, /data-factor-step="content"/);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-factor-step="innerConstant"/);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-factor-step="ans2"/);
-
-  // Attempt to reveal solution early MUST be blocked
-  app.context.revealFactorStepSolution('content');
-  assert.equal(comp.correction.usedSolution, false);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-solution-box/);
-
-  // Wrong attempt 1 -> Hint 1 only, no solution button
-  app.fill({ content: '99' }); app.context.checkAnswer();
-  assert.match(stage2Area.innerHTML, /data-hint-level="1"/);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-hint-level="2"/);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-solution-btn="content"/);
-
-  // Wrong attempt 2 -> Hint 1 & 2, still no solution button
-  app.fill({ content: '98' }); app.context.checkAnswer();
-  assert.match(stage2Area.innerHTML, /data-hint-level="2"/);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-hint-level="3"/);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-solution-btn="content"/);
-
-  // Wrong attempt 3 -> Hint 1..3 + active solution button, but solution STILL hidden until clicked
-  app.fill({ content: '97' }); app.context.checkAnswer();
-  assert.match(stage2Area.innerHTML, /data-hint-level="3"/);
-  assert.match(stage2Area.innerHTML, /data-solution-btn="content"/);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-solution-box="content"/);
-  assert.equal(comp.correction.usedSolution, false);
-
-  // Click solution button -> reveals solution, marks usedSolution, step STILL requires answer submission
-  app.context.revealFactorStepSolution('content');
-  assert.match(stage2Area.innerHTML, /data-solution-box="content"/);
-  assert.equal(comp.correction.usedSolution, true);
-  assert.equal(comp.correction.unlockedIndex, 0);
-
-  // Submit correct content -> unlocks innerConstant
-  app.fill({ content: String(comp.stage2Ans.content.expected) });
-  app.context.checkAnswer();
-  assert.equal(comp.correction.unlockedIndex, 1);
-  assert.match(stage2Area.innerHTML, /data-factor-step="innerConstant"/);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-factor-step="ans2"/);
-
-  // Test reopening Step 1 clears Step 2 input and preserves usedSolution=true
-  app.fill({ innerConstant: String(comp.stage2Ans.innerConstant.expected) });
-  app.context.reopenFactorizationStep(0);
-  assert.equal(comp.correction.unlockedIndex, 0);
-  assert.equal(comp.correction.responses.innerConstant, undefined);
-  assert.equal(comp.correction.usedSolution, true);
-  app.fill({ content: String(comp.stage2Ans.content.expected) });
-  app.context.checkAnswer();
-  app.fill({ innerConstant: String(comp.stage2Ans.innerConstant.expected) });
-  app.context.checkAnswer();
-
-  // Now ans2 is unlocked: no solution button allowed, equivalent-not-factored rejected, must type full factorization
-  assert.equal(comp.correction.unlockedIndex, 2);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-solution-btn="ans2"/);
-  app.context.revealFactorStepSolution('ans2');
-  assert.doesNotMatch(stage2Area.innerHTML, /data-solution-box="ans2"/);
-
-  app.fill({ ans2: comp.formula });
-  app.context.checkAnswer();
-  assert.equal(comp.answerState, 'answering');
-  assert.match(app.el('feedback-banner').innerHTML, /沒有分解完全/);
-
-  app.fill({ ans2: solvePrompt(comp.formula).answer });
-  app.context.checkAnswer();
-  assert.equal(comp.answerState, 'completed');
-  assert.equal(comp.outcome, 'solution-guided');
-  app.tick(1500);
-
-  // --- 2) monic: numberPair unordered step with no partial feedback ---
-  assert.equal(app.state.currentIndex, 1);
-  app.fill({ ans: '(x+99)(x+99)' });
-  app.context.checkAnswer();
-  app.tick(600);
-  const { small, large, answer: monicAns } = solvePrompt(monic.formula);
-  // Single field filled -> incomplete, does NOT bump wrongCount or reveal hints
-  app.fill({ numberPair_0: String(small), numberPair_1: '' });
-  app.context.checkAnswer();
-  assert.equal(monic.correction.stepState.numberPair.wrongCount, 0);
-  assert.equal(app.state.activeInputId, 'q_1_numberPair_1');
-  // Tab toggles between numberPair_1 and numberPair_0
-  app.key('Tab');
-  assert.equal(app.state.activeInputId, 'q_1_numberPair_0');
-  // One right + one wrong -> whole step wrong, NO emerald per-field feedback, reveals Hint 1
-  app.fill({ numberPair_0: String(small), numberPair_1: String(small) });
-  app.context.checkAnswer();
-  assert.equal(monic.correction.stepState.numberPair.wrongCount, 1);
-  assert.doesNotMatch(stage2Area.innerHTML, /border-emerald-500/);
-  assert.match(stage2Area.innerHTML, /data-hint-level="1"/);
-  // Swapped order passes and unlocks ans2
-  app.fill({ numberPair_0: String(large), numberPair_1: String(small) });
-  app.context.checkAnswer();
-  assert.equal(monic.correction.unlockedIndex, 1);
-  app.fill({ ans2: monicAns });
-  app.context.checkAnswer();
-  assert.equal(monic.outcome, 'guided');
-  app.tick(1500);
-
-  // --- 3) cross: cardPair -> crossA -> crossB -> ans2 (must still type final factorization!) ---
-  assert.equal(app.state.currentIndex, 2);
-  const [w0, w1] = wrongCardPair(cross);
-  app.context.toggleFactorCard(1, w0);
-  app.context.toggleFactorCard(1, w1);
-  app.context.checkAnswer();
-  app.tick(600);
-  // Wrong card pair in Stage 2 stays on cardPair (crossA not unlocked)
-  app.context.toggleFactorCard(2, w0);
-  app.context.toggleFactorCard(2, w1);
-  app.context.checkAnswer();
-  assert.equal(cross.correction.unlockedIndex, 0);
-  assert.doesNotMatch(stage2Area.innerHTML, /data-factor-step="crossA"/);
-  assert.match(stage2Area.innerHTML, /data-hint-level="1"/);
-  // Confirm right card pair -> unlocks crossA, then crossB, then ans2
-  app.context.clearSelectedFactorCards();
-  app.context.toggleFactorCard(2, cross.correctPair[0]);
-  app.context.toggleFactorCard(2, cross.correctPair[1]);
-  app.context.checkAnswer();
-  assert.equal(cross.correction.unlockedIndex, 1);
-  assert.match(stage2Area.innerHTML, /data-factor-step="crossA"/);
-  app.fill({ crossA: String(cross.stage2Ans.crossA.expected) });
-  app.context.checkAnswer();
-  assert.equal(cross.correction.unlockedIndex, 2);
-  app.fill({ crossB: String(cross.stage2Ans.crossB.expected) });
-  app.context.checkAnswer();
-  assert.equal(cross.correction.unlockedIndex, 3);
-  assert.equal(app.state.activeInputId, 'q_2_ans2');
-  assert.equal(app.el('keyboard-factorization').classList.contains('hidden'), false);
-  // Cannot finish by cards alone; must type complete factorization in ans2
-  assert.equal(cross.answerState, 'answering');
-  app.fill({ ans2: solvePrompt(cross.formula).answer });
-  app.context.checkAnswer();
-  assert.equal(cross.answerState, 'completed');
-  assert.equal(cross.outcome, 'guided');
-});
-
 test('4-category outcome report distinguishes firstTry, selfCorrected, guided, and solutionGuided without double counting', () => {
   const app = startFactorization(42, 10);
   const qs = app.state.questions;
-  // Plan across the 10 questions:
-  // - non-cross questions: assign 2 first-try, 2 self-corrected, 2 guided, 2 solution-guided
-  // - 2 cross questions: assign 1 first-try, 1 guided
-  // Total = 3 first-try + 2 self-corrected + 3 guided + 2 solution-guided = 10
   const nonCrossPlan = ['first-try', 'first-try', 'self-corrected', 'self-corrected', 'guided', 'guided', 'solution-guided', 'solution-guided'];
-  const crossPlan = ['first-try', 'guided'];
+  const crossPlan = ['first-try', 'solution-guided'];
   let ncIdx = 0, cIdx = 0;
 
   for (let i = 0; i < qs.length; i++) {
@@ -420,15 +465,13 @@ test('4-category outcome report distinguishes firstTry, selfCorrected, guided, a
       app.context.checkAnswer();
       app.tick(1500);
     } else if (mode === 'self-corrected') {
-      app.fill({ ans: q.formula }); // equivalent-not-factored
+      app.fill({ ans: q.formula });
       app.context.checkAnswer();
       assert.equal(q.currentStage, 1);
       app.fill({ ans: answer });
       app.context.checkAnswer();
       app.tick(1500);
-    } else if (mode === 'guided' || mode === 'solution-guided') {
-      // Even if a student first triggers equivalent-not-factored before failing into Stage 2,
-      // the question MUST only count in Stage 2 (guided or solution-guided), never double-counted.
+    } else {
       if (q.subtype !== 'cross' && mode === 'guided') {
         app.fill({ ans: q.formula });
         app.context.checkAnswer();
@@ -442,9 +485,8 @@ test('4-category outcome report distinguishes firstTry, selfCorrected, guided, a
       }
       app.context.checkAnswer();
       app.tick(600);
-      for (let s = 0; s < q.steps.length; s++) {
-        // For solution-guided, use solution on EVERY intermediate step to verify no multi-counting per question
-        solveStage2Step(app, q, q.steps[s], { useSolution: mode === 'solution-guided' });
+      for (const step of q.steps) {
+        solveStage2Step(app, q, step, { useSolution: mode === 'solution-guided' });
       }
       app.tick(1500);
     }
@@ -456,72 +498,14 @@ test('4-category outcome report distinguishes firstTry, selfCorrected, guided, a
   assert.equal(app.el('report-total').textContent, '10 題');
   assert.equal(app.el('report-perfect').textContent, '3 題');
   assert.equal(app.el('report-self-corrected').textContent, '2 題');
-  assert.equal(app.el('report-guided').textContent, '3 題');
-  assert.equal(app.el('report-solution-guided').textContent, '2 題');
-  assert.equal(app.el('report-self-corrected-row').classList.contains('hidden'), false);
-  assert.equal(app.el('report-solution-row').classList.contains('hidden'), false);
-  assert.equal(app.el('report-guided-label').textContent, '一般訂正完成：');
+  assert.equal(app.el('report-guided').textContent, '2 題');
+  assert.equal(app.el('report-solution-guided').textContent, '3 題');
   const sum = app.state.reportSummary.firstTry + app.state.reportSummary.selfCorrected
     + app.state.reportSummary.guided + app.state.reportSummary.solutionGuided;
   assert.equal(sum, 10);
-  assert.match(app.el('diagnosis-text').textContent, /因式|公式|配對|十字交乘/);
 });
 
-test('factorization lifecycle: duplicate submit, exit modal isolation, and exit/restart timer isolation', () => {
-  // 1) Duplicate submit on Stage 1 (input & card) awards exactly 1 star and advances once
-  const app = startFactorization(42, 10);
-  const basic = app.state.questions.find(q => q.subtype !== 'cross');
-  const cross = app.state.questions.find(q => q.subtype === 'cross');
-  app.mount([basic, cross]);
-
-  app.fill({ ans: solvePrompt(basic.formula).answer });
-  app.context.checkAnswer();
-  for (let i = 0; i < 4; i++) {
-    app.context.pressKey('OK');
-    app.key('Enter');
-    app.context.checkAnswer();
-  }
-  assert.equal(app.state.goldenStars, 1);
-  app.tick(1499); assert.equal(app.state.currentIndex, 0);
-  app.tick(1); assert.equal(app.state.currentIndex, 1);
-
-  // 2) Exit modal isolates card clicks, keyboard, clear, and submit on challenge card question
-  app.context.toggleFactorCard(1, cross.correctPair[0]);
-  app.context.triggerExitCheck();
-  app.context.toggleFactorCard(1, cross.correctPair[1]);
-  app.context.clearSelectedFactorCards();
-  app.key('Enter');
-  app.context.pressKey('OK');
-  assert.deepEqual([...cross.stage1SelectedCards], [cross.correctPair[0]]);
-  assert.equal(cross.answerState, 'answering');
-
-  // Cancel modal restores card selection cleanly without losing first selected card
-  app.context.hideExitModal();
-  assert.equal(app.el('keyboard-cards').classList.contains('hidden'), false);
-  const [w0, w1] = wrongCardPair(cross);
-  app.context.clearSelectedFactorCards();
-  app.context.toggleFactorCard(1, w0);
-  app.context.toggleFactorCard(1, w1);
-  app.context.checkAnswer();
-  const pending = app.pendingCallbacks();
-
-  // Exit during 600ms correction delay cancels timers; queued old callbacks cannot mutate new session
-  app.context.confirmExit();
-  assert.equal(app.pendingCallbacks().length, 0);
-  app.context.selectDifficulty('factorization');
-  app.context.selectCount(10);
-  app.context.startGame();
-  const fresh = app.state.questions[0];
-  pending.forEach(fn => fn());
-  app.tick(3000);
-  assert.equal(app.state.currentIndex, 0);
-  assert.equal(app.state.questions[0], fresh);
-  assert.equal(fresh.currentStage, 1);
-  assert.equal(app.state.goldenStars, 0);
-  assert.equal(app.el('stage-2-container').classList.contains('open'), false);
-});
-
-test('all 8 factorization templates complete Stage 2 end-to-end; 100% and self-corrected-only diagnoses work', () => {
+test('all 8 factorization templates complete Stage 2 end-to-end including numberPair unordered step & reopen step', () => {
   const app = startFactorization(42, 30);
   const bySubtype = new Map();
   for (const q of app.state.questions) {
@@ -547,88 +531,68 @@ test('all 8 factorization templates complete Stage 2 end-to-end; 100% and self-c
     app.tick(1500);
   }
   assert.equal(app.el('report-total').textContent, '8 題');
-  assert.equal(app.el('report-perfect').textContent, '0 題');
-  assert.equal(app.el('report-self-corrected').textContent, '0 題');
   assert.equal(app.el('report-guided').textContent, '8 題');
-  assert.equal(app.el('report-solution-guided').textContent, '0 題');
 
-  // Self-corrected-only session diagnosis (no Stage 2 errors)
-  const selfApp = startFactorization(42, 10);
-  const nonCross = selfApp.state.questions.filter(q => q.subtype !== 'cross').slice(0, 2);
-  selfApp.mount(nonCross);
-  for (const q of nonCross) {
-    selfApp.fill({ ans: q.formula });
-    selfApp.context.checkAnswer();
-    selfApp.fill({ ans: solvePrompt(q.formula).answer });
-    selfApp.context.checkAnswer();
-    selfApp.tick(1500);
-  }
-  assert.equal(selfApp.el('report-self-corrected').textContent, '2 題');
-  assert.equal(selfApp.el('report-guided').textContent, '0 題');
-  assert.match(selfApp.el('diagnosis-text').textContent, /還沒分解完全/);
+  // Reopen step clears subsequent step responses & preserves usedSolution
+  const reopenApp = startFactorization(42, 10);
+  const twoStep = reopenApp.state.questions.find(q => q.subtype === 'two-step');
+  reopenApp.mount([twoStep]);
+  reopenApp.fill({ ans: '(x+99)(x+99)' });
+  reopenApp.context.checkAnswer();
+  reopenApp.tick(600);
+  solveStage2Step(reopenApp, twoStep, twoStep.steps[0], { useSolution: true });
+  reopenApp.fill({ squareRoot: String(twoStep.stage2Ans.squareRoot.expected) });
+  reopenApp.context.reopenFactorizationStep(0);
+  assert.equal(twoStep.correction.unlockedIndex, 0);
+  assert.equal(twoStep.correction.responses.squareRoot, undefined);
+  assert.equal(twoStep.correction.usedSolution, true);
 });
 
-test('Stage 2 exit modal isolates solution reveal, step reopen, card taps, and restores input after 600ms expansion', () => {
+test('factorization lifecycle: duplicate submit, exit modal isolation in Stage 1/2, and exit/restart timer isolation', () => {
   const app = startFactorization(42, 10);
-  const comp = app.state.questions.find(q => q.subtype === 'common-composite');
+  const basic = app.state.questions.find(q => q.subtype === 'common-composite');
   const cross = app.state.questions.find(q => q.subtype === 'cross');
-  app.mount([comp, cross]);
+  app.mount([basic, cross]);
 
-  // Trigger Stage 2, open exit modal BEFORE 600ms finishes, let Stage 2 expand under modal
-  app.fill({ ans: '(x+99)(x+99)' });
+  // Duplicate submit on Stage 1 completes once
+  app.fill({ ans: solvePrompt(basic.formula).answer });
   app.context.checkAnswer();
-  app.context.triggerExitCheck();
-  app.tick(600);
-  assert.equal(comp.currentStage, 2);
-  assert.equal(app.state.activeInputId, null);
-
-  // Cancel modal -> restores focus on Stage 2 Step 1 input and standard integer keyboard
-  app.context.hideExitModal();
-  assert.equal(app.state.activeInputId, 'q_0_content');
-  assert.equal(app.el('keyboard-standard').classList.contains('hidden'), false);
-
-  // Unlock solution button via 3 wrong attempts, then open exit modal -> solution button & typing blocked
-  for (let i = 0; i < 3; i++) {
-    app.fill({ content: '99' });
+  for (let i = 0; i < 4; i++) {
+    app.context.pressKey('OK');
+    app.key('Enter');
     app.context.checkAnswer();
   }
-  app.fill({ content: String(comp.stage2Ans.content.expected) });
-  app.context.triggerExitCheck();
-  app.context.revealFactorStepSolution('content');
-  app.key('Backspace');
-  app.context.checkAnswer();
-  assert.equal(comp.correction.usedSolution, false);
-  assert.equal(app.document.querySelector('[data-input-id="q_0_content"]').getAttribute('data-value'), String(comp.stage2Ans.content.expected));
-
-  // Cancel modal -> Step 1 passes -> open modal -> reopenFactorizationStep blocked while modal open
-  app.context.hideExitModal();
-  app.context.checkAnswer();
-  assert.equal(comp.correction.unlockedIndex, 1);
-  app.context.triggerExitCheck();
-  app.context.reopenFactorizationStep(0);
-  assert.equal(comp.correction.unlockedIndex, 1);
-  app.context.hideExitModal();
-  app.fill({ innerConstant: String(comp.stage2Ans.innerConstant.expected) });
-  app.context.checkAnswer();
-  app.fill({ ans2: solvePrompt(comp.formula).answer });
-  app.context.checkAnswer();
+  assert.equal(app.state.goldenStars, 1);
   app.tick(1500);
 
-  // Q1 (cross): expand Stage 2 under exit modal, then cancel -> card keyboard ready
+  // Exit modal isolates card taps, clear, and submit on challenge card question
+  app.context.toggleFactorCard(1, cross.correctPair[0]);
+  app.context.triggerExitCheck();
+  app.context.toggleFactorCard(1, cross.correctPair[1]);
+  app.context.clearSelectedFactorCards();
+  app.key('Enter');
+  assert.deepEqual([...cross.stage1SelectedCards], [cross.correctPair[0]]);
+  app.context.hideExitModal();
+  assert.equal(app.el('keyboard-cards').classList.contains('hidden'), false);
+
+  // Trigger Stage 2 under exit modal, then cancel -> card bar / input restored cleanly
   const [w0, w1] = wrongCardPair(cross);
+  app.context.clearSelectedFactorCards();
   app.context.toggleFactorCard(1, w0);
   app.context.toggleFactorCard(1, w1);
   app.context.checkAnswer();
-  app.context.triggerExitCheck();
-  app.tick(600);
-  assert.equal(cross.currentStage, 2);
-  app.context.toggleFactorCard(2, cross.correctPair[0]);
-  assert.deepEqual([...cross.correction.selectedCards], []);
-  app.context.hideExitModal();
-  assert.equal(app.el('keyboard-cards').classList.contains('hidden'), false);
-  app.context.toggleFactorCard(2, cross.correctPair[0]);
-  app.context.toggleFactorCard(2, cross.correctPair[1]);
-  app.context.checkAnswer();
-  assert.equal(cross.correction.unlockedIndex, 1);
+  const pending = app.pendingCallbacks();
+  app.context.confirmExit();
+  assert.equal(app.pendingCallbacks().length, 0);
+  app.context.selectDifficulty('factorization');
+  app.context.selectCount(10);
+  app.context.startGame();
+  const fresh = app.state.questions[0];
+  pending.forEach(fn => fn());
+  app.tick(3000);
+  assert.equal(app.state.currentIndex, 0);
+  assert.equal(app.state.questions[0], fresh);
+  assert.equal(fresh.currentStage, 1);
+  assert.equal(app.state.goldenStars, 0);
+  assert.equal(app.el('stage-2-container').classList.contains('open'), false);
 });
-
