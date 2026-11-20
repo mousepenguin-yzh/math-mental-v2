@@ -130,4 +130,4 @@ function question(overrides = {}) {
   };
 }
 
-module.exports = { createApp, question };
+module.exports = { createApp, question, seededRandom };
