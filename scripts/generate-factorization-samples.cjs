@@ -36,13 +36,24 @@ for (const band of Object.keys(bands)) {
     showAttempt(q, { numberPair: [small-1, large+1] }, `填 ${small-1}、${large+1}，只有和吻合`);
     showAttempt(q, { numberPair: [large, small] }, `填 ${large}、${small}，進入完整分解輸入`);
   }
+  if (q.stage2Ans.gcf) {
+    const gcf = q.stage2Ans.gcf.expected;
+    const expectedText = gcf.coefficient === 1 ? 'x' : `${gcf.coefficient}x`;
+    rows.push('', '試填最大公因式', '');
+    showAttempt(q, { gcf: String(gcf.coefficient) }, `只填 ${gcf.coefficient}（漏寫 x）`);
+    showAttempt(q, { gcf: `${expectedText}+1` }, `填 ${expectedText}+1（非單項式）`);
+    showAttempt(q, { gcf: expectedText }, `填 ${expectedText}，進入完整分解輸入`);
+  }
   if (q.cards) {
-    const wrong = q.correctPair.map(i => q.cards.indexOf(q.cards[i].replace(/[+−]/, sign => sign === '+' ? '−' : '+')));
+    const [i0, i1] = q.correctPair;
+    const swappedSigns = q.correctPair.map(i => q.cards.indexOf(q.cards[i].replace(/[+−]/, sign => sign === '+' ? '−' : '+')));
+    const monics = q.cards.map((c, idx) => ({ c, idx })).filter(({ c }) => c.startsWith('x')).slice(0, 2).map(x => x.idx);
     const labels = indices => indices.map(i => q.cards[i]).join('、');
-    rows.push('', '試選卡片', '');
-    showAttempt(q, { cardPair: wrong }, `選 ${labels(wrong)}，留在選卡步重新配對`);
-    const cardPair = q.correctPair.slice().reverse();
-    showAttempt(q, { cardPair }, `改選 ${labels(cardPair)}，開始計算已確認卡片的交叉項`);
+    const [, middle] = q.stage1Ans.ans.expected;
+    rows.push('', '試檢驗卡片', '');
+    showAttempt(q, { crossCheck: { cardPair: monics, middle: '' } }, `選 ${labels(monics)}，首項不符`);
+    showAttempt(q, { crossCheck: { cardPair: swappedSigns, middle: String(-middle) } }, `選 ${labels(swappedSigns)} 並正確算出交叉項 ${-middle}，符號不符題目 ${middle}`);
+    showAttempt(q, { crossCheck: { cardPair: [i1, i0], middle: String(middle) } }, `改選 ${labels([i1, i0])} 並算出交叉項 ${middle}，進入完整分解輸入`);
   }
   rows.push('');
 }

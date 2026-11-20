@@ -138,8 +138,10 @@
       }
 
       #keyboard-panel button[onclick="pressKey('-')"],
-      #keyboard-panel button[onclick="pressKey('OK')"] {
-        font-size: 0.9375rem;
+      #keyboard-panel button[onclick="pressKey('OK')"],
+      #keyboard-panel button[onclick="pressKey('Clear')"],
+      #keyboard-panel button[onclick="clearSelectedFactorCards()"] {
+        font-size: 0.875rem;
         line-height: 1.25rem;
       }
     }
@@ -170,15 +172,16 @@
       transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
       opacity: 0;
     }
-    .expand-section.open {
-      max-height: min(1200px, 150dvh);
-      opacity: 1;
+    .expand-section:not(.open) {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      border-top-width: 0 !important;
+      pointer-events: none;
     }
-
-    @supports not (height: 100dvh) {
-      .expand-section.open {
-        max-height: 1200px;
-      }
+    .expand-section.open {
+      max-height: 2400px;
+      opacity: 1;
     }
 
     /* 虛擬鍵盤按壓效果 */
@@ -374,6 +377,16 @@
             </div>
             <div class="w-3.5 h-3.5 rounded-full border border-slate-600 flex items-center justify-center check-dot shrink-0 ml-2"></div>
           </button>
+          <button onclick="selectDifficulty('factorization')" id="btn-diff-factorization" class="diff-btn w-full text-left p-2 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-700/30 transition-all flex items-center justify-between group">
+            <div class="flex items-center space-x-2.5 min-w-0">
+              <div class="bg-orange-500/10 text-orange-400 w-7 h-7 rounded-lg flex items-center justify-center shrink-0"><span class="font-math font-black text-xs">07</span></div>
+              <div class="min-w-0">
+                <h3 class="font-bold text-sm text-slate-100 group-hover:text-white">因式分解特訓</h3>
+                <p class="text-[11px] text-slate-300">提公因式、乘法公式、二次式與十字交乘</p>
+              </div>
+            </div>
+            <div class="w-3.5 h-3.5 rounded-full border border-slate-600 flex items-center justify-center check-dot shrink-0 ml-2"></div>
+          </button>
         </div>
       </div>
 
@@ -429,9 +442,9 @@
         </div>
 
         <!-- 第一階段：直覺填空答案框 -->
-        <div id="stage-1-container" class="flex flex-col items-center justify-center py-2.5 bg-slate-800/40 rounded-xl border border-slate-700/30">
-          <div class="text-xs text-slate-300 mb-1.5 font-medium">請在下方空格內填入正確答案：</div>
-          <div id="stage-1-input-area" class="flex items-center justify-center font-math">
+        <div id="stage-1-container" class="flex flex-col items-center justify-center py-2.5 px-2 bg-slate-800/40 rounded-xl border border-slate-700/30">
+          <div id="stage-1-prompt" class="text-xs text-slate-300 mb-1.5 font-medium text-center">請在下方空格內填入正確答案：</div>
+          <div id="stage-1-input-area" class="w-full flex items-center justify-center font-math">
             <!-- 答案格子由 JS 動態解析填入 -->
           </div>
         </div>
@@ -523,18 +536,26 @@
       </div>
 
       <!-- 統計明細 -->
-      <div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/40 mb-3 space-y-0.5">
+      <div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/40 mb-3 space-y-1">
         <div class="flex justify-between text-xs">
           <span class="text-slate-400">總挑戰題目數：</span>
-          <span class="font-math font-bold text-slate-200" id="report-total">0 題</span>
+          <span id="report-total" class="font-math font-bold text-slate-200">0 題</span>
         </div>
         <div class="flex justify-between text-xs">
-          <span class="text-slate-400">首度答對（完美金色星星）：</span>
-          <span class="font-math font-bold text-amber-400" id="report-perfect">0 題</span>
+          <span id="report-perfect-label" class="text-slate-400">首度答對（完美金色星星）：</span>
+          <span id="report-perfect" class="font-math font-bold text-amber-400">0 題</span>
+        </div>
+        <div id="report-self-corrected-row" class="hidden flex justify-between text-xs">
+          <span class="text-slate-400">自行修正（未進入訂正）：</span>
+          <span id="report-self-corrected" class="font-math font-bold text-sky-300">0 題</span>
         </div>
         <div class="flex justify-between text-xs">
-          <span class="text-slate-400">經引導答對（完成訂正）：</span>
-          <span class="font-math font-bold text-emerald-400" id="report-guided">0 題</span>
+          <span id="report-guided-label" class="text-slate-400">經引導答對（完成訂正）：</span>
+          <span id="report-guided" class="font-math font-bold text-emerald-400">0 題</span>
+        </div>
+        <div id="report-solution-row" class="hidden flex justify-between text-xs">
+          <span class="text-slate-400">查看解法後完成：</span>
+          <span id="report-solution-guided" class="font-math font-bold text-purple-300">0 題</span>
         </div>
       </div>
 
@@ -557,7 +578,7 @@
   </main>
 
   <!--================= 懸浮式通知 Toast Banner =================-->
-  <div id="feedback-banner" class="fixed top-14 left-1/2 -translate-x-1/2 z-30 hidden px-4 py-1.5 rounded-full shadow-2xl border text-xs font-black tracking-wide transition-all transform scale-90 opacity-0 max-w-[92vw] text-center truncate"></div>
+  <div id="feedback-banner" class="fixed top-14 left-1/2 -translate-x-1/2 z-30 hidden px-4 py-1.5 rounded-2xl shadow-2xl border text-xs font-black tracking-wide leading-snug transition-all transform scale-90 opacity-0 max-w-[92vw] text-center break-words"></div>
 
   <!--================= 客製化防誤觸 Modal 彈窗 =================-->
   <div id="exit-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -578,31 +599,104 @@
 
   <!-- 下方：固定式極簡專屬虛擬鍵盤 -->
   <footer id="keyboard-panel" class="hidden bg-slate-800 border-t border-slate-700/80 p-1.5 select-none w-full max-w-md mx-auto rounded-t-xl shadow-2xl z-20 shrink-0">
-    <div class="grid grid-cols-4 gap-1">
-      <button onclick="pressKey('7')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">7</button>
-      <button onclick="pressKey('8')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">8</button>
-      <button onclick="pressKey('9')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">9</button>
-      <button onclick="pressKey('Backspace')" class="key-press bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 font-bold text-sm py-1.5 rounded-lg shadow-sm flex items-center justify-center col-span-1">
+    <!-- 標準數字 / 根號鍵盤（既有六關與整數訂正步驟） -->
+    <div id="keyboard-standard" class="grid grid-cols-4 gap-1">
+      <button type="button" onclick="pressKey('7')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">7</button>
+      <button type="button" onclick="pressKey('8')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">8</button>
+      <button type="button" onclick="pressKey('9')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">9</button>
+      <button type="button" onclick="pressKey('Backspace')" class="key-press bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 font-bold text-sm py-1.5 rounded-lg shadow-sm flex items-center justify-center col-span-1">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414A2 2 0 0010.828 19H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"/></svg>
       </button>
 
-      <button onclick="pressKey('4')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">4</button>
-      <button onclick="pressKey('5')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">5</button>
-      <button onclick="pressKey('6')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">6</button>
-      <button onclick="pressKey('-')" class="key-press bg-slate-600 hover:bg-slate-500 text-white font-math font-bold text-xs py-1.5 rounded-lg shadow-sm flex items-center justify-center">負號 (-)</button>
+      <button type="button" onclick="pressKey('4')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">4</button>
+      <button type="button" onclick="pressKey('5')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">5</button>
+      <button type="button" onclick="pressKey('6')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">6</button>
+      <button type="button" onclick="pressKey('-')" class="key-press bg-slate-600 hover:bg-slate-500 text-white font-math font-bold text-xs py-1.5 rounded-lg shadow-sm flex items-center justify-center">負號 (-)</button>
 
-      <button onclick="pressKey('1')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">1</button>
-      <button onclick="pressKey('2')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">2</button>
-      <button onclick="pressKey('3')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">3</button>
-      <button id="key-aux" data-key="." onclick="pressAuxKey()" class="key-press bg-slate-600 hover:bg-slate-500 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="小數點 (.)">.</button>
+      <button type="button" onclick="pressKey('1')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">1</button>
+      <button type="button" onclick="pressKey('2')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">2</button>
+      <button type="button" onclick="pressKey('3')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">3</button>
+      <button type="button" id="key-aux" data-key="." onclick="pressAuxKey()" class="key-press bg-slate-600 hover:bg-slate-500 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="小數點 (.)">.</button>
 
-      <button onclick="pressKey('0')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">0</button>
-      <button onclick="pressKey('OK')" class="key-press bg-gradient-to-r from-indigo-500 to-purple-600 hover:brightness-110 text-white font-bold text-sm py-1.5 rounded-lg shadow-md flex items-center justify-center col-span-3 space-x-1">
+      <button type="button" onclick="pressKey('0')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">0</button>
+      <button type="button" onclick="pressKey('OK')" class="key-press bg-gradient-to-r from-indigo-500 to-purple-600 hover:brightness-110 text-white font-bold text-sm py-1.5 rounded-lg shadow-md flex items-center justify-center col-span-3 space-x-1">
         <span>送出檢查</span>
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
       </button>
     </div>
+
+    <!-- 因式分解專屬數學鍵盤（統一用於因式分解關卡所有非選卡輸入） -->
+    <div id="keyboard-factorization" class="hidden grid grid-cols-5 gap-1">
+      <button type="button" onclick="pressKey('7')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">7</button>
+      <button type="button" onclick="pressKey('8')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">8</button>
+      <button type="button" onclick="pressKey('9')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">9</button>
+      <button id="key-fac-x" type="button" onclick="pressKey('x')" class="key-press bg-indigo-600/80 hover:bg-indigo-500 text-white font-math font-black text-base py-1.5 rounded-lg shadow-sm border border-indigo-400/40 flex items-center justify-center" title="變數 x">x</button>
+      <button type="button" onclick="pressKey('Backspace')" class="key-press bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 font-bold text-sm py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="退格">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414A2 2 0 0010.828 19H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"/></svg>
+      </button>
+
+      <button type="button" onclick="pressKey('4')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">4</button>
+      <button type="button" onclick="pressKey('5')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">5</button>
+      <button type="button" onclick="pressKey('6')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">6</button>
+      <button id="key-fac-lparen" type="button" onclick="pressKey('(')" class="key-press bg-slate-600 hover:bg-slate-500 text-cyan-200 font-math font-black text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="左括號 (">(</button>
+      <button id="key-fac-rparen" type="button" onclick="pressKey(')')" class="key-press bg-slate-600 hover:bg-slate-500 text-cyan-200 font-math font-black text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="右括號 )">)</button>
+
+      <button type="button" onclick="pressKey('1')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">1</button>
+      <button type="button" onclick="pressKey('2')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">2</button>
+      <button type="button" onclick="pressKey('3')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">3</button>
+      <button id="key-fac-plus" type="button" onclick="pressKey('+')" class="key-press bg-slate-600 hover:bg-slate-500 text-white font-math font-black text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="加號 (+)">+</button>
+      <button type="button" onclick="pressKey('-')" class="key-press bg-slate-600 hover:bg-slate-500 text-white font-math font-black text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="減號 / 負號 (-)">−</button>
+
+      <button type="button" onclick="pressKey('0')" class="key-press bg-slate-700 hover:bg-slate-600 text-white font-math font-bold text-base py-1.5 rounded-lg shadow-sm flex items-center justify-center">0</button>
+      <button id="key-fac-square" type="button" onclick="pressKey('²')" class="key-press bg-violet-600/80 hover:bg-violet-500 text-white font-math font-black text-base py-1.5 rounded-lg shadow-sm border border-violet-400/40 flex items-center justify-center" title="平方 (²)">²</button>
+      <button type="button" onclick="pressKey('Clear')" class="key-press bg-slate-700/80 hover:bg-slate-600 text-slate-200 font-bold text-xs py-1.5 rounded-lg shadow-sm flex items-center justify-center" title="清空目前輸入">清空</button>
+      <button type="button" onclick="pressKey('OK')" class="key-press bg-gradient-to-r from-indigo-500 to-purple-600 hover:brightness-110 text-white font-bold text-sm py-1.5 rounded-lg shadow-md flex items-center justify-center col-span-2 space-x-1">
+        <span>送出檢查</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+
+    <!-- 挑戰題卡片配對確認列 -->
+    <div id="keyboard-cards" class="hidden space-y-1.5">
+      <div id="cards-status-text" class="text-center text-xs font-math text-indigo-200 bg-slate-900/70 border border-slate-700/70 rounded-lg py-1.5 px-2 truncate">請選 2 張因式卡片（已選 0 / 2）</div>
+      <div class="grid grid-cols-3 gap-1.5">
+        <button type="button" onclick="clearSelectedFactorCards()" class="key-press bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-sm py-2 rounded-lg shadow-sm flex items-center justify-center">重選</button>
+        <button type="button" onclick="pressKey('OK')" class="key-press bg-gradient-to-r from-indigo-500 to-purple-600 hover:brightness-110 text-white font-bold text-sm py-2 rounded-lg shadow-md flex items-center justify-center col-span-2 space-x-1">
+          <span id="cards-submit-label">確認配對並送出</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
   </footer>
+
+  <!-- 因式分解 V1 數學核心模組橋接（與 Node 測試共用同一份正式模組） -->
+  <script type="module">
+    import {
+      factorizationLimits,
+      parseFactorizationAnswer,
+      validateFactorizationAnswer,
+      parseMonomialAnswer,
+      validateMonomialAnswer,
+    } from './src/factorization-answer.mjs';
+    import {
+      parseLinearCard,
+      inspectCrossCardPair,
+      checkFactorizationCorrection,
+    } from './src/factorization-correction.mjs';
+    import { buildFactorizationQuestions } from './src/factorization-questions.mjs';
+
+    window.FactorizationCore = Object.freeze({
+      factorizationLimits,
+      parseFactorizationAnswer,
+      validateFactorizationAnswer,
+      parseMonomialAnswer,
+      validateMonomialAnswer,
+      parseLinearCard,
+      inspectCrossCardPair,
+      checkFactorizationCorrection,
+      buildFactorizationQuestions,
+    });
+  </script>
 
   <!-- 全域核心 JavaScript 邏輯 -->
   <script>
@@ -1528,7 +1622,48 @@
       return ordered;
     }
 
+    // --- 第七關：因式分解特訓 V1（整合 src/factorization-*.mjs） ---
+    const factorizationCategoryMap = {
+      common: 'Factorization_Common',
+      'common-composite': 'Factorization_Common',
+      difference: 'Factorization_Formula',
+      square: 'Factorization_Formula',
+      'two-step': 'Factorization_Formula',
+      monic: 'Factorization_Quadratic',
+      'signed-pair': 'Factorization_Quadratic',
+      cross: 'Factorization_Cross',
+    };
+
+    const factorizationBandLabels = {
+      basic: '基礎',
+      medium: '中等',
+      challenge: '挑戰',
+    };
+
+    function getFactorizationCore() {
+      return window.FactorizationCore || null;
+    }
+
+    function buildFactorizationSessionQuestions(count) {
+      const core = getFactorizationCore();
+      if (!core || typeof core.buildFactorizationQuestions !== 'function') {
+        throw new Error('因式分解模組尚未載入');
+      }
+      const rawQuestions = core.buildFactorizationQuestions(count, () => Math.random());
+      return rawQuestions.map(q => ({
+        ...q,
+        category: factorizationCategoryMap[q.subtype] || 'Factorization_Common',
+        formulaHtml: escapeHtml(q.formula),
+        stage1Markup: q.subtype === 'cross' ? '' : '[input:ans]',
+        stage2Markup: '',
+        stage2Hint: q.subtype === 'cross'
+          ? '先依「首項 → 常數 → 交叉項」逐步檢驗與調整卡片，最後自行輸入完整因式分解：'
+          : '跟著步驟逐步拆解，答對一步就會解鎖下一步：',
+      }));
+    }
+
     function buildQuestions(difficulty, count) {
+      if (difficulty === 'factorization') return buildFactorizationSessionQuestions(count);
       if (difficulty === 'radicals') return buildRadicalQuestions(count);
       if (difficulty === 'pythagorean') return buildPythagoreanQuestions(count);
       const qs = [];
@@ -1562,13 +1697,13 @@
       return formulaHtml.replace(/√(\d+)/g, (_, radicand) => radHtml(radicand));
     }
 
-    // 安全渲染輸入框內的數值（將開頭 - 轉為明確的 −，將 √... 轉為帶頂線根號）
+    // 安全渲染輸入框內的數值（將 - 轉為明確的 −，將 √... 轉為帶頂線根號）
     function renderInputDisplay(rawVal, isFocused) {
       const caretHtml = isFocused ? '<span class="caret-blink text-indigo-400 ml-0.5 font-normal">|</span>' : '';
       const raw = String(rawVal ?? '');
       if (!raw) return caretHtml;
 
-      const display = raw.replace(/^-/, '−');
+      const display = raw.replace(/-/g, '−');
       const sqrtIndex = display.indexOf('√');
       if (sqrtIndex === -1) {
         return `<span>${escapeHtml(display)}</span>${caretHtml}`;
@@ -1582,6 +1717,27 @@
       return `<span>${beforeSqrt}</span><span class="rad-group"><span class="rad-sign">√</span><span class="rad-bar">${afterSqrt}${caretHtml}</span></span>`;
     }
 
+    function isCardSelectionActive(q = state.questions[state.currentIndex]) {
+      if (!q || q.levelId !== 'factorization') return false;
+      if (q.currentStage === 1) return q.subtype === 'cross';
+      if (q.currentStage === 2 && q.correction) {
+        const activeStep = q.steps[q.correction.unlockedIndex];
+        const type = activeStep ? q.stage2Ans[activeStep.key]?.type : null;
+        return type === 'card-pair' || type === 'cross-check';
+      }
+      return false;
+    }
+
+    function isCardBarVisible(q = state.questions[state.currentIndex]) {
+      if (!isCardSelectionActive(q)) return false;
+      if (q.currentStage === 1) return true;
+      const activeStep = q.steps[q.correction.unlockedIndex];
+      if (activeStep && q.stage2Ans[activeStep.key]?.type === 'cross-check') {
+        return !q.correction.crossState?.pairChecked;
+      }
+      return true;
+    }
+
     function getInputSpec(inputId) {
       const q = state.questions[state.currentIndex];
       if (!q || !inputId) return null;
@@ -1589,6 +1745,12 @@
       const key = inputId.startsWith(prefix) ? inputId.slice(prefix.length) : inputId;
       const stageAns = (q.currentStage === 2 ? q.stage2Ans : q.stage1Ans) || {};
       if (Object.hasOwn(stageAns, key)) return stageAns[key];
+      if (q.levelId === 'factorization' && /^numberPair_[01]$/.test(key) && stageAns.numberPair?.type === 'sum-product') {
+        return { type: 'integer' };
+      }
+      if (q.levelId === 'factorization' && key === 'crossMid' && stageAns.crossCheck?.type === 'cross-check') {
+        return { type: 'integer' };
+      }
       if (q.stage1Ans && Object.hasOwn(q.stage1Ans, key)) return q.stage1Ans[key];
       if (q.stage2Ans && Object.hasOwn(q.stage2Ans, key)) return q.stage2Ans[key];
       return null;
@@ -1596,6 +1758,8 @@
 
     function getFieldInputMode(spec) {
       if (spec && typeof spec === 'object') {
+        if (spec.type === 'factorization') return 'factorization';
+        if (spec.type === 'monomial') return 'monomial';
         if (spec.type === 'radical') return 'radical';
         if (spec.type === 'integer') return 'integer';
       }
@@ -1603,13 +1767,82 @@
     }
 
     function getActiveInputMode() {
+      if (isCardBarVisible()) return 'cards';
       return getFieldInputMode(getInputSpec(state.activeInputId));
     }
 
+    function updateFactorCardBar() {
+      const statusEl = document.getElementById('cards-status-text');
+      const submitLabelEl = document.getElementById('cards-submit-label');
+      const q = state.questions[state.currentIndex];
+      if (!statusEl || !q || q.levelId !== 'factorization' || !Array.isArray(q.cards)) return;
+      const selected = q.currentStage === 1
+        ? (q.stage1SelectedCards || [])
+        : (q.correction?.selectedCards || []);
+      if (selected.length === 0) {
+        statusEl.textContent = '請選 2 張因式卡片（已選 0 / 2）';
+      } else if (selected.length === 1) {
+        statusEl.textContent = `已選 1 / 2：（${q.cards[selected[0]]}），請再選 1 張`;
+      } else {
+        statusEl.textContent = `已選 2 / 2：(${q.cards[selected[0]]})(${q.cards[selected[1]]})`;
+      }
+      if (submitLabelEl) {
+        submitLabelEl.textContent = q.currentStage === 2 ? '檢驗這組卡片' : '確認配對並送出';
+      }
+    }
+
+    function setFactorKeyEnabled(id, enabled) {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = !enabled;
+      btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+      btn.setAttribute('data-state', enabled ? 'enabled' : 'disabled');
+      if (enabled) {
+        btn.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+      } else {
+        btn.classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+      }
+    }
+
+    function updateFactorizationKeyStates(mode) {
+      setFactorKeyEnabled('key-fac-x', mode === 'factorization' || mode === 'monomial');
+      setFactorKeyEnabled('key-fac-lparen', mode === 'factorization');
+      setFactorKeyEnabled('key-fac-rparen', mode === 'factorization');
+      setFactorKeyEnabled('key-fac-plus', mode === 'factorization' || mode === 'integer');
+      setFactorKeyEnabled('key-fac-square', mode === 'factorization' || mode === 'monomial');
+    }
+
     function updateKeyboardForInput(inputId) {
+      const standardEl = document.getElementById('keyboard-standard');
+      const factorEl = document.getElementById('keyboard-factorization');
+      const cardsEl = document.getElementById('keyboard-cards');
+      const q = state.questions[state.currentIndex];
+      const isFactorizationLevel = Boolean(q && q.levelId === 'factorization');
+      const cardBar = isCardBarVisible(q);
+      const mode = cardBar ? 'cards' : getFieldInputMode(getInputSpec(inputId));
+
+      if (standardEl && factorEl && cardsEl) {
+        if (mode === 'cards') {
+          standardEl.classList.add('hidden');
+          factorEl.classList.add('hidden');
+          cardsEl.classList.remove('hidden');
+          updateFactorCardBar();
+          return;
+        }
+        if (isFactorizationLevel || mode === 'factorization' || mode === 'monomial') {
+          standardEl.classList.add('hidden');
+          cardsEl.classList.add('hidden');
+          factorEl.classList.remove('hidden');
+          updateFactorizationKeyStates(mode);
+          return;
+        }
+        factorEl.classList.add('hidden');
+        cardsEl.classList.add('hidden');
+        standardEl.classList.remove('hidden');
+      }
+
       const auxBtn = document.getElementById('key-aux');
       if (!auxBtn) return;
-      const mode = getFieldInputMode(getInputSpec(inputId));
       auxBtn.classList.remove(
         'bg-slate-600', 'hover:bg-slate-500', 'text-white', 'font-bold',
         'bg-indigo-600/80', 'hover:bg-indigo-500', 'font-black', 'border', 'border-indigo-400/40',
@@ -1692,7 +1925,11 @@
         const fullInputId = `q_${qIndex}_${inputId}`;
         const spec = q ? ((q.currentStage === 2 ? q.stage2Ans?.[inputId] : q.stage1Ans?.[inputId]) ?? q.stage1Ans?.[inputId] ?? q.stage2Ans?.[inputId]) : null;
         const mode = getFieldInputMode(spec);
-        const defaultWidth = mode === 'radical' ? 'min-w-[5.5rem] px-2.5' : 'w-12 px-1.5';
+        const defaultWidth = mode === 'factorization'
+          ? 'min-w-[11rem] max-w-full px-3 overflow-x-auto'
+          : mode === 'radical'
+            ? 'min-w-[5.5rem] px-2.5'
+            : 'w-12 px-1.5';
         const width = widthClass ? `${widthClass} px-2` : defaultWidth;
         return `
           <div data-input-id="${fullInputId}" data-input-mode="${mode}" onclick="focusInput('${fullInputId}')" class="math-input inline-flex items-center justify-center ${width} h-10 border border-slate-600 rounded-lg bg-slate-800 text-slate-100 font-bold text-base cursor-pointer transition-all shadow-sm mx-0.5 select-none focus:outline-none whitespace-nowrap"></div>
@@ -1717,7 +1954,7 @@
       updateKeyboardForInput(inputId);
       const activeEl = document.querySelector(`[data-input-id="${inputId}"]`);
       if (activeEl) {
-        activeEl.classList.remove('border-slate-600', 'bg-slate-800', 'border-rose-500', 'bg-rose-950/20', 'text-rose-300');
+        activeEl.classList.remove('border-slate-600', 'bg-slate-800', 'border-rose-500', 'bg-rose-950/20', 'text-rose-300', 'border-amber-400', 'bg-amber-950/20', 'text-amber-200');
         activeEl.classList.add('border-indigo-400', 'bg-indigo-950/40', 'ring-1', 'ring-indigo-500/30', 'is-focused');
         const currentVal = activeEl.getAttribute('data-value') || '';
         activeEl.innerHTML = renderInputDisplay(currentVal, true);
@@ -1727,21 +1964,44 @@
 
     function pressKey(key) {
       if (!canAnswer()) return;
+      if (key === 'OK') {
+        checkAnswer();
+        return;
+      }
       if (!state.activeInputId) return;
       const activeEl = document.querySelector(`[data-input-id="${state.activeInputId}"]`);
       if (!activeEl) return;
 
       const mode = getActiveInputMode();
-      const maxLen = mode === 'legacy' ? 10 : exactAnswerLimits.length;
+      const factorLimit = getFactorizationCore()?.factorizationLimits?.length || 160;
+      const maxLen = mode === 'legacy' ? 10 : (mode === 'factorization' || mode === 'monomial') ? factorLimit : exactAnswerLimits.length;
       let currentVal = activeEl.getAttribute('data-value') || '';
 
       if (key === 'Backspace') {
         currentVal = currentVal.slice(0, -1);
       } else if (key === 'Clear') {
         currentVal = '';
-      } else if (key === '-') {
-        if (currentVal.startsWith('-')) currentVal = currentVal.slice(1);
-        else if (currentVal.length < maxLen) currentVal = '-' + currentVal;
+      } else if (key === '-' || key === '−') {
+        if (mode === 'factorization') {
+          if (currentVal.length < maxLen) currentVal += '-';
+        } else {
+          if (currentVal.startsWith('-')) currentVal = currentVal.slice(1);
+          else if (currentVal.length < maxLen) currentVal = '-' + currentVal;
+        }
+      } else if (key === '+') {
+        if (mode === 'factorization') {
+          if (currentVal.length < maxLen) currentVal += '+';
+        } else if (mode === 'integer') {
+          if (currentVal.startsWith('-')) currentVal = currentVal.slice(1);
+        } else {
+          return;
+        }
+      } else if (key === '(' || key === ')') {
+        if (mode !== 'factorization') return;
+        if (currentVal.length < maxLen) currentVal += key;
+      } else if (key === 'x' || key === '²' || key === '^' || key === '*' || key === '×') {
+        if (mode !== 'factorization' && mode !== 'monomial') return;
+        if (currentVal.length < maxLen) currentVal += key;
       } else if (key === '.') {
         if (mode !== 'legacy') return;
         if (!currentVal.includes('.') && currentVal.length < maxLen) currentVal += '.';
@@ -1753,9 +2013,6 @@
           showFeedback(false, '💡 已經輸入過根號 √ 囉！可按退格修改或直接輸入數字');
           return;
         }
-      } else if (key === 'OK') {
-        checkAnswer();
-        return;
       } else if (key >= '0' && key <= '9') {
         if (currentVal.length < maxLen) { 
           currentVal += key;
@@ -1770,18 +2027,33 @@
     document.addEventListener('keydown', (e) => {
       if (!canAnswer()) return;
       if (document.getElementById('game-panel').classList.contains('hidden')) return;
+      const mode = getActiveInputMode();
       
       if (e.key >= '0' && e.key <= '9') {
         if (e.preventDefault) e.preventDefault();
         pressKey(e.key);
-      } else if (e.key === '-') {
+      } else if (e.key === '-' || e.key === '−') {
         if (e.preventDefault) e.preventDefault();
         pressKey('-');
+      } else if (e.key === '+') {
+        if (mode === 'factorization' || mode === 'integer') {
+          if (e.preventDefault) e.preventDefault();
+          pressKey('+');
+        }
       } else if (e.key === '.') {
         if (e.preventDefault) e.preventDefault();
         pressKey('.');
+      } else if ((mode === 'factorization' || mode === 'monomial') && (e.key === 'x' || e.key === 'X')) {
+        if (e.preventDefault) e.preventDefault();
+        pressKey('x');
+      } else if ((mode === 'factorization' || mode === 'monomial') && (e.key === '²' || e.key === '^' || e.key === '*' || e.key === '×')) {
+        if (e.preventDefault) e.preventDefault();
+        pressKey(e.key);
+      } else if (mode === 'factorization' && (e.key === '(' || e.key === ')')) {
+        if (e.preventDefault) e.preventDefault();
+        pressKey(e.key);
       } else if (e.key === 'r' || e.key === 'R') {
-        if (getActiveInputMode() === 'radical') {
+        if (mode === 'radical') {
           if (e.preventDefault) e.preventDefault();
           pressKey('√');
         }
@@ -1790,7 +2062,14 @@
         pressKey('Backspace');
       } else if (e.key === 'Escape') {
         if (e.preventDefault) e.preventDefault();
-        clearCurrentInput();
+        if (mode === 'cards') clearSelectedFactorCards();
+        else clearCurrentInput();
+      } else if (e.key === 'Tab' && state.activeInputId && /_numberPair_[01]$/.test(state.activeInputId)) {
+        if (e.preventDefault) e.preventDefault();
+        const nextId = state.activeInputId.endsWith('_0')
+          ? state.activeInputId.slice(0, -1) + '1'
+          : state.activeInputId.slice(0, -1) + '0';
+        focusInput(nextId);
       } else if (e.key === 'Enter') {
         if (e.preventDefault) e.preventDefault();
         pressKey('OK');
@@ -1875,11 +2154,824 @@
       };
     }
 
+    // --- 第七關：因式分解作答與第二階段逐步訂正介面 ---
+    function formatSignedDisplay(val) {
+      return String(val ?? '').replace(/-/g, '−');
+    }
+
+    function formatLeadTerm(coeff) {
+      return coeff === 1 ? 'x' : `${coeff}x`;
+    }
+
+    function formatLeadSquare(coeff) {
+      return coeff === 1 ? 'x²' : `${coeff}x²`;
+    }
+
+    function formatSignedParen(n) {
+      return n < 0 ? `(−${Math.abs(n)})` : `(+${n})`;
+    }
+
+    function renderFactorizationCardGrid(cards, selectedIndices, stage, options = {}) {
+      const { locked = false, status = null } = options;
+      const itemsHtml = cards.map((card, idx) => {
+        const isSelected = selectedIndices.includes(idx);
+        let styleClass = 'border-slate-600 bg-slate-800/90 text-slate-100 hover:border-indigo-400/70 hover:bg-slate-700/70';
+        if (isSelected) {
+          if (status === 'correct') {
+            styleClass = 'border-emerald-400 bg-emerald-950/50 text-emerald-200 ring-2 ring-emerald-400/40';
+          } else if (status === 'wrong') {
+            styleClass = 'border-rose-500 bg-rose-950/40 text-rose-200 ring-2 ring-rose-500/40 shake-anim';
+          } else {
+            styleClass = 'border-indigo-400 bg-indigo-600/30 text-white ring-2 ring-indigo-400/50';
+          }
+        } else if (locked) {
+          styleClass = 'border-slate-700/60 bg-slate-900/40 text-slate-500 opacity-60';
+        }
+        const badge = isSelected
+          ? `<span class="text-[10px] font-sans font-bold px-1.5 py-0.5 rounded-full ${status === 'correct' ? 'bg-emerald-500/30 text-emerald-200' : status === 'wrong' ? 'bg-rose-500/30 text-rose-200' : 'bg-indigo-500/40 text-indigo-200'}">已選</span>`
+          : '';
+        const clickAttr = locked ? '' : `onclick="toggleFactorCard(${stage}, ${idx})"`;
+        const disabledAttr = locked ? 'disabled aria-disabled="true"' : '';
+        return `<button type="button" data-card-stage="${stage}" data-card-index="${idx}" data-selected="${isSelected ? 'true' : 'false'}" ${clickAttr} ${disabledAttr} class="key-press min-h-[2.85rem] px-2.5 py-2 rounded-xl border font-math font-bold text-base flex items-center justify-between gap-1 transition-all ${styleClass}"><span>${escapeHtml(card)}</span>${badge}</button>`;
+      }).join('');
+      return `<div class="w-full space-y-2"><div class="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full">${itemsHtml}</div></div>`;
+    }
+
+    function toggleFactorCard(stage, cardIndex) {
+      if (!canAnswer()) return;
+      const q = state.questions[state.currentIndex];
+      if (!q || q.levelId !== 'factorization' || q.currentStage !== stage || !isCardSelectionActive(q)) return;
+      if (!Number.isInteger(cardIndex) || cardIndex < 0 || cardIndex >= (q.cards?.length || 0)) return;
+
+      const selected = stage === 1
+        ? (q.stage1SelectedCards || (q.stage1SelectedCards = []))
+        : (q.correction.selectedCards || (q.correction.selectedCards = []));
+
+      const pos = selected.indexOf(cardIndex);
+      if (pos >= 0) {
+        selected.splice(pos, 1);
+      } else if (selected.length < 2) {
+        selected.push(cardIndex);
+      } else {
+        showFeedback(false, stage === 2
+          ? '已選 2 張卡片，先點已選卡片取消，或按「檢驗這組卡片」。'
+          : '已選 2 張卡片，先點已選卡片取消，或按「確認配對並送出」判定。');
+        return;
+      }
+
+      if (stage === 1) {
+        document.getElementById('stage-1-input-area').innerHTML = renderFactorizationCardGrid(q.cards, selected, 1);
+      } else {
+        const activeStep = q.steps[q.correction.unlockedIndex];
+        const ss = activeStep ? q.correction.stepState[activeStep.key] : null;
+        if (ss) ss.status = null;
+        if (activeStep && q.stage2Ans[activeStep.key]?.type === 'cross-check') {
+          q.correction.crossState.pairChecked = false;
+          q.correction.crossState.diagnostic = null;
+          q.correction.responses.crossCheck = { cardPair: selected.slice(), middle: '' };
+          state.activeInputId = null;
+        } else if (activeStep) {
+          q.correction.responses[activeStep.key] = selected.slice();
+        }
+        renderFactorizationStage2(q, { autoFocus: false, scrollToActive: false });
+      }
+      updateFactorCardBar();
+    }
+
+    function clearSelectedFactorCards() {
+      if (!canAnswer()) return;
+      const q = state.questions[state.currentIndex];
+      if (!q || q.levelId !== 'factorization' || !isCardSelectionActive(q)) return;
+      if (q.currentStage === 1) {
+        q.stage1SelectedCards = [];
+        document.getElementById('stage-1-input-area').innerHTML = renderFactorizationCardGrid(q.cards, [], 1);
+      } else if (q.correction) {
+        q.correction.selectedCards = [];
+        const activeStep = q.steps[q.correction.unlockedIndex];
+        if (activeStep && q.stage2Ans[activeStep.key]?.type === 'cross-check') {
+          q.correction.crossState.pairChecked = false;
+          q.correction.crossState.diagnostic = null;
+          q.correction.responses.crossCheck = { cardPair: [], middle: '' };
+          state.activeInputId = null;
+        } else if (activeStep) {
+          q.correction.responses[activeStep.key] = [];
+        }
+        if (activeStep && q.correction.stepState[activeStep.key]) {
+          q.correction.stepState[activeStep.key].status = null;
+        }
+        renderFactorizationStage2(q, { autoFocus: false, scrollToActive: false });
+      }
+      updateFactorCardBar();
+    }
+
+    function initFactorizationStage2(q) {
+      const stepState = {};
+      for (const step of q.steps) {
+        stepState[step.key] = {
+          wrongCount: 0,
+          revealedHints: 0,
+          solutionAvailable: false,
+          solutionRevealed: false,
+          completed: false,
+          status: null,
+        };
+      }
+      const core = getFactorizationCore();
+      const initialSelected = q.subtype === 'cross' && Array.isArray(q.stage1SelectedCards)
+        ? q.stage1SelectedCards.slice()
+        : [];
+      const initialDiag = q.subtype === 'cross' && core && initialSelected.length === 2
+        ? core.inspectCrossCardPair(q, initialSelected)
+        : null;
+      const initialPairChecked = Boolean(initialDiag && initialDiag.leadingOk && initialDiag.constantOk);
+      q.correction = {
+        unlockedIndex: 0,
+        responses: q.subtype === 'cross'
+          ? { crossCheck: { cardPair: initialSelected.slice(), middle: '' } }
+          : {},
+        selectedCards: initialSelected,
+        crossState: {
+          pairChecked: initialPairChecked,
+          diagnostic: initialDiag,
+          lastMiddleMismatch: null,
+        },
+        stepState,
+        usedSolution: false,
+      };
+    }
+
+    function syncFactorizationStepInputs(q) {
+      if (!q || !q.correction) return;
+      const activeStep = q.steps[q.correction.unlockedIndex];
+      if (!activeStep) return;
+      const key = activeStep.key;
+      const spec = q.stage2Ans[key];
+      const idx = state.currentIndex;
+      if (spec.type === 'cross-check') {
+        const midEl = document.querySelector(`[data-input-id="q_${idx}_crossMid"]`);
+        const prev = q.correction.responses[key] || { cardPair: [], middle: '' };
+        q.correction.responses[key] = {
+          cardPair: (q.correction.selectedCards || []).slice(),
+          middle: midEl ? (midEl.getAttribute('data-value') || '') : (q.correction.crossState?.pairChecked ? (prev.middle || '') : ''),
+        };
+      } else if (spec.type === 'card-pair') {
+        q.correction.responses[key] = (q.correction.selectedCards || []).slice();
+      } else if (spec.type === 'sum-product') {
+        const el0 = document.querySelector(`[data-input-id="q_${idx}_${key}_0"]`);
+        const el1 = document.querySelector(`[data-input-id="q_${idx}_${key}_1"]`);
+        const prev = Array.isArray(q.correction.responses[key]) ? q.correction.responses[key] : ['', ''];
+        q.correction.responses[key] = [
+          el0 ? (el0.getAttribute('data-value') || '') : (prev[0] || ''),
+          el1 ? (el1.getAttribute('data-value') || '') : (prev[1] || ''),
+        ];
+      } else {
+        const el = document.querySelector(`[data-input-id="q_${idx}_${key}"]`);
+        if (el) q.correction.responses[key] = el.getAttribute('data-value') || '';
+      }
+    }
+
+    function formatCompletedFactorStepValue(q, step) {
+      const spec = q.stage2Ans[step.key];
+      const resp = q.correction.responses[step.key];
+      if (spec.type === 'cross-check' && resp && Array.isArray(resp.cardPair) && resp.cardPair.length === 2) {
+        const diag = q.correction.crossState?.diagnostic || getFactorizationCore()?.inspectCrossCardPair(q, resp.cardPair);
+        const pairText = `「${q.cards[resp.cardPair[0]]}」與「${q.cards[resp.cardPair[1]]}」`;
+        if (diag) {
+          return `${pairText}（首項 ${formatLeadSquare(diag.leadingProduct)}、常數 ${formatSignedDisplay(diag.constantProduct)}、交叉項 ${formatSignedDisplay(diag.middleSum)}）`;
+        }
+        return pairText;
+      }
+      if (spec.type === 'card-pair' && Array.isArray(resp) && resp.length === 2) {
+        return `「${q.cards[resp[0]]}」與「${q.cards[resp[1]]}」`;
+      }
+      if (spec.type === 'sum-product' && Array.isArray(resp) && resp.length === 2) {
+        return `${formatSignedDisplay(resp[0])} 與 ${formatSignedDisplay(resp[1])}`;
+      }
+      return formatSignedDisplay(resp ?? '');
+    }
+
+    function renderCrossCheckControl(q, step, ss, qIdx) {
+      const cs = q.correction.crossState || { pairChecked: false, diagnostic: null, lastMiddleMismatch: null };
+      const selected = q.correction.selectedCards || [];
+      const cardStatus = !cs.pairChecked && ss.status === 'wrong' ? 'wrong' : null;
+      const cardsHtml = renderFactorizationCardGrid(q.cards, selected, 2, { status: cardStatus });
+
+      let mismatchClueHtml = '';
+      if (cs.lastMiddleMismatch && !cs.pairChecked) {
+        const m = cs.lastMiddleMismatch;
+        const innerText = m.innerProduct < 0 ? `(−${Math.abs(m.innerProduct)})` : `${m.innerProduct}`;
+        mismatchClueHtml = `
+          <div data-cross-mismatch="true" class="rounded-lg border border-amber-400/45 bg-amber-950/30 p-2.5 text-xs font-sans text-amber-100 leading-relaxed">
+            <div class="font-bold text-amber-300">✓ 剛才交叉項算對了，但這組卡片不合：</div>
+            <div class="mt-0.5 font-math">(${escapeHtml(m.cards[0])})(${escapeHtml(m.cards[1])}) → ${formatSignedDisplay(m.outerProduct)} + ${innerText} = ${formatSignedDisplay(m.middleSum)}（題目一次項是 ${formatSignedDisplay(m.targetMiddle)}）</div>
+            <div class="text-[11px] text-amber-200/85 mt-0.5">請在上方改選兩張卡片再按「檢驗這組卡片」。</div>
+          </div>
+        `;
+      }
+
+      let diagHtml = '';
+      const diag = cs.diagnostic;
+      if (diag) {
+        const leadBadge = diag.leadingOk
+          ? `<span class="text-[11px] font-sans font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">✓ 符合</span>`
+          : `<span class="text-[11px] font-sans font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">✗ 題目是 ${formatLeadSquare(diag.targetLeading)}</span>`;
+        const constBadge = diag.constantOk
+          ? `<span class="text-[11px] font-sans font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">✓ 符合</span>`
+          : `<span class="text-[11px] font-sans font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">✗ 題目是 ${formatSignedDisplay(diag.targetConstant)}</span>`;
+
+        let middleBlock = '';
+        if (cs.pairChecked && diag.leadingOk && diag.constantOk) {
+          const midVal = String(q.correction.responses.crossCheck?.middle ?? '');
+          const midId = `q_${qIdx}_crossMid`;
+          const midErr = ss.status === 'wrong' ? 'border-rose-500 bg-rose-950/20 text-rose-300' : 'border-slate-600 bg-slate-800 text-slate-100';
+          middleBlock = `
+            <div data-cross-stage="middle" class="pt-2 border-t border-slate-700/70 space-y-1.5">
+              <div class="text-xs font-sans text-indigo-200 font-bold">③ 計算 (${escapeHtml(diag.cards[0])})(${escapeHtml(diag.cards[1])}) 的交叉項中間係數：</div>
+              <div class="text-[11px] font-math text-slate-300">${formatLeadTerm(diag.first.xCoeff)} × ${formatSignedParen(diag.second.constant)} + ${formatSignedParen(diag.first.constant)} × ${formatLeadTerm(diag.second.xCoeff)}</div>
+              <div class="flex items-center justify-center gap-2 py-0.5">
+                <span class="text-xs font-sans text-slate-300">x 項係數 =</span>
+                <div data-input-id="${midId}" data-input-mode="integer" data-value="${escapeHtml(midVal)}" onclick="focusInput('${midId}')" class="math-input inline-flex items-center justify-center w-20 px-2 h-10 border ${midErr} rounded-lg font-bold text-base cursor-pointer transition-all shadow-sm select-none whitespace-nowrap">${renderInputDisplay(midVal, false)}</div>
+              </div>
+              <div class="text-[11px] font-sans text-slate-400">點上方卡片隨時可更換配對。</div>
+            </div>
+          `;
+        } else {
+          middleBlock = `
+            <div data-cross-stage="cards" class="pt-1.5 border-t border-slate-700/70 text-[11px] font-sans text-slate-400">
+              ③ 交叉項係數：先調整上方卡片，讓①首項與②常數都符合。
+            </div>
+          `;
+        }
+
+        diagHtml = `
+          <div data-cross-diagnostic="true" class="rounded-lg border border-slate-700 bg-slate-900/70 p-2.5 space-y-1.5 text-xs">
+            <div class="text-[11px] font-sans text-slate-400">目前檢驗：<span class="font-math font-bold text-slate-200">(${escapeHtml(diag.cards[0])})(${escapeHtml(diag.cards[1])})</span></div>
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span class="font-math text-slate-200"><span class="font-sans text-slate-400">① 首項：</span>${formatLeadTerm(diag.first.xCoeff)} × ${formatLeadTerm(diag.second.xCoeff)} = ${formatLeadSquare(diag.leadingProduct)}</span>
+              ${leadBadge}
+            </div>
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span class="font-math text-slate-200"><span class="font-sans text-slate-400">② 常數：</span>${formatSignedParen(diag.first.constant)} × ${formatSignedParen(diag.second.constant)} = ${formatSignedDisplay(diag.constantProduct)}</span>
+              ${constBadge}
+            </div>
+            ${middleBlock}
+          </div>
+        `;
+      }
+
+      return `<div class="space-y-2">${cardsHtml}${mismatchClueHtml}${diagHtml}</div>`;
+    }
+
+    function renderFactorizationStage2(q, options = {}) {
+      const { autoFocus = false, preserveFocusId = null, shakeActive = false, scrollToActive = false } = options;
+      const area = document.getElementById('stage-2-input-area');
+      if (!area || !q || !q.correction) return;
+
+      const qIdx = state.currentIndex;
+      const unlocked = q.correction.unlockedIndex;
+      const blocks = [];
+
+      for (let i = 0; i <= unlocked && i < q.steps.length; i++) {
+        const step = q.steps[i];
+        const spec = q.stage2Ans[step.key];
+        const ss = q.correction.stepState[step.key];
+
+        if (i < unlocked) {
+          const summaryVal = formatCompletedFactorStepValue(q, step);
+          blocks.push(`
+            <div data-factor-step="${step.key}" data-step-state="completed" class="w-full rounded-xl border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-left flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-[11px] font-sans text-emerald-300 font-bold">✓ 步驟 ${i + 1}：${escapeHtml(step.prompt)}</div>
+                <div class="text-sm font-math font-bold text-emerald-200 mt-0.5">${escapeHtml(summaryVal)}</div>
+              </div>
+              <button type="button" onclick="reopenFactorizationStep(${i})" class="key-press shrink-0 text-[11px] font-sans font-bold px-2 py-1 rounded-lg border border-slate-600 bg-slate-800/80 hover:bg-slate-700 text-slate-300">修改</button>
+            </div>
+          `);
+          continue;
+        }
+
+        let controlHtml = '';
+        if (spec.type === 'cross-check') {
+          controlHtml = renderCrossCheckControl(q, step, ss, qIdx);
+        } else if (spec.type === 'card-pair') {
+          controlHtml = renderFactorizationCardGrid(q.cards, q.correction.selectedCards || [], 2, { status: ss.status });
+        } else if (spec.type === 'sum-product') {
+          const pair = Array.isArray(q.correction.responses[step.key]) ? q.correction.responses[step.key] : ['', ''];
+          const id0 = `q_${qIdx}_${step.key}_0`;
+          const id1 = `q_${qIdx}_${step.key}_1`;
+          const errClass = ss.status === 'wrong' ? 'border-rose-500 bg-rose-950/20 text-rose-300' : 'border-slate-600 bg-slate-800 text-slate-100';
+          controlHtml = `
+            <div class="flex items-center justify-center flex-wrap gap-2 py-1">
+              <span class="text-xs font-sans text-slate-300">兩數：</span>
+              <div data-input-id="${id0}" data-input-mode="integer" data-value="${escapeHtml(pair[0] || '')}" onclick="focusInput('${id0}')" class="math-input inline-flex items-center justify-center w-16 px-2 h-10 border ${errClass} rounded-lg font-bold text-base cursor-pointer transition-all shadow-sm select-none whitespace-nowrap">${renderInputDisplay(pair[0] || '', false)}</div>
+              <span class="text-xs font-sans text-slate-300">與</span>
+              <div data-input-id="${id1}" data-input-mode="integer" data-value="${escapeHtml(pair[1] || '')}" onclick="focusInput('${id1}')" class="math-input inline-flex items-center justify-center w-16 px-2 h-10 border ${errClass} rounded-lg font-bold text-base cursor-pointer transition-all shadow-sm select-none whitespace-nowrap">${renderInputDisplay(pair[1] || '', false)}</div>
+            </div>
+          `;
+        } else if (spec.type === 'monomial') {
+          const val = String(q.correction.responses[step.key] ?? '');
+          const id = `q_${qIdx}_${step.key}`;
+          const errClass = ss.status === 'wrong' ? 'border-rose-500 bg-rose-950/20 text-rose-300' : 'border-slate-600 bg-slate-800 text-slate-100';
+          controlHtml = `
+            <div class="flex items-center justify-center gap-2 py-1">
+              <span class="text-xs font-sans text-slate-300">最大公因式：</span>
+              <div data-input-id="${id}" data-input-mode="monomial" data-value="${escapeHtml(val)}" onclick="focusInput('${id}')" class="math-input inline-flex items-center justify-center min-w-[6rem] px-3 h-10 border ${errClass} rounded-lg font-bold text-base cursor-pointer transition-all shadow-sm select-none whitespace-nowrap">${renderInputDisplay(val, false)}</div>
+            </div>
+          `;
+        } else if (spec.type === 'factorization') {
+          const val = String(q.correction.responses[step.key] ?? '');
+          const id = `q_${qIdx}_${step.key}`;
+          const stateClass = ss.status === 'equivalent-not-factored'
+            ? 'border-amber-400 bg-amber-950/20 text-amber-200'
+            : ss.status === 'wrong'
+              ? 'border-rose-500 bg-rose-950/20 text-rose-300'
+              : 'border-slate-600 bg-slate-800 text-slate-100';
+          controlHtml = `
+            <div class="flex flex-col items-center gap-1.5 py-1">
+              <div data-input-id="${id}" data-input-mode="factorization" data-value="${escapeHtml(val)}" onclick="focusInput('${id}')" class="math-input inline-flex items-center justify-center min-w-[11rem] max-w-full px-3 overflow-x-auto h-10 border ${stateClass} rounded-lg font-bold text-base cursor-pointer transition-all shadow-sm select-none whitespace-nowrap">${renderInputDisplay(val, false)}</div>
+              <div class="text-[11px] font-sans text-slate-400">請使用下方數學鍵盤自行輸入完整因式分解。</div>
+            </div>
+          `;
+        } else {
+          const val = String(q.correction.responses[step.key] ?? '');
+          const id = `q_${qIdx}_${step.key}`;
+          const errClass = ss.status === 'wrong' ? 'border-rose-500 bg-rose-950/20 text-rose-300' : 'border-slate-600 bg-slate-800 text-slate-100';
+          controlHtml = `
+            <div class="flex items-center justify-center gap-2 py-1">
+              <span class="text-xs font-sans text-slate-300">答案：</span>
+              <div data-input-id="${id}" data-input-mode="integer" data-value="${escapeHtml(val)}" onclick="focusInput('${id}')" class="math-input inline-flex items-center justify-center w-20 px-2 h-10 border ${errClass} rounded-lg font-bold text-base cursor-pointer transition-all shadow-sm select-none whitespace-nowrap">${renderInputDisplay(val, false)}</div>
+            </div>
+          `;
+        }
+
+        let hintsHtml = '';
+        if (Array.isArray(step.hints) && ss.revealedHints > 0) {
+          const items = step.hints.slice(0, ss.revealedHints).map((hint, idx) =>
+            `<div data-hint-level="${idx + 1}" class="text-xs font-sans text-indigo-100 leading-relaxed"><span class="text-amber-300 font-bold mr-1">提示 ${idx + 1}：</span>${escapeHtml(hint)}</div>`
+          ).join('');
+          hintsHtml = `<div class="rounded-lg border border-indigo-500/30 bg-indigo-950/40 p-2.5 space-y-1">${items}</div>`;
+        }
+
+        let solutionHtml = '';
+        if (step.solution && ss.solutionAvailable) {
+          if (!ss.solutionRevealed) {
+            solutionHtml = `<button type="button" data-solution-btn="${step.key}" onclick="revealFactorStepSolution('${step.key}')" class="key-press w-full py-1.5 px-3 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 text-xs font-sans font-bold transition-all">查看本步解法</button>`;
+          } else {
+            solutionHtml = `
+              <div data-solution-box="${step.key}" class="rounded-lg border border-amber-500/40 bg-amber-950/30 p-2.5 text-xs font-sans text-amber-100 leading-relaxed">
+                <div class="font-bold text-amber-300 mb-0.5">本步解法</div>
+                <div>${escapeHtml(step.solution)}</div>
+                <div class="text-[11px] text-amber-200/80 mt-1">請依解法完成本步作答並送出。</div>
+              </div>
+            `;
+          }
+        }
+
+        blocks.push(`
+          <div id="factor-active-step" data-factor-step="${step.key}" data-step-state="active" class="w-full rounded-xl border border-indigo-500/45 bg-slate-800/85 p-3 text-left space-y-2 shadow-inner">
+            <div class="flex items-start gap-2">
+              <span class="shrink-0 text-[10px] font-math font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 mt-0.5">${i + 1} / ${q.steps.length}</span>
+              <div class="text-xs sm:text-[13px] font-sans font-bold text-slate-100 leading-relaxed">${escapeHtml(step.prompt)}</div>
+            </div>
+            ${controlHtml}
+            ${hintsHtml}
+            ${solutionHtml}
+          </div>
+        `);
+      }
+
+      area.innerHTML = blocks.join('');
+
+      const activeStep = q.steps[unlocked];
+      const activeSpec = activeStep ? q.stage2Ans[activeStep.key] : null;
+      if (isCardBarVisible(q)) {
+        state.activeInputId = null;
+        updateKeyboardForInput(null);
+      } else if (preserveFocusId && document.querySelector(`[data-input-id="${preserveFocusId}"]`)) {
+        state.activeInputId = null;
+        focusInput(preserveFocusId);
+      } else if (autoFocus) {
+        const firstInput = document.querySelector('#stage-2-input-area .math-input');
+        if (firstInput) {
+          state.activeInputId = null;
+          focusInput(firstInput.getAttribute('data-input-id'));
+        }
+      }
+
+      if (shakeActive && activeStep) {
+        const idsToShake = activeSpec?.type === 'sum-product'
+          ? [`q_${qIdx}_${activeStep.key}_0`, `q_${qIdx}_${activeStep.key}_1`]
+          : activeSpec?.type === 'cross-check'
+            ? [`q_${qIdx}_crossMid`]
+            : [`q_${qIdx}_${activeStep.key}`];
+        for (const id of idsToShake) {
+          const el = document.querySelector(`[data-input-id="${id}"]`);
+          if (el) {
+            el.classList.add('shake-anim');
+            setGameTimeout(() => { el.classList.remove('shake-anim'); }, 300);
+          }
+        }
+      }
+
+      if (scrollToActive) {
+        setGameTimeout(() => {
+          const activeStepEl = document.getElementById('factor-active-step');
+          if (activeStepEl && activeStepEl.scrollIntoView) {
+            activeStepEl.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+          }
+        }, 120);
+      }
+    }
+
+    function revealFactorStepSolution(stepKey) {
+      if (!canAnswer()) return;
+      const q = state.questions[state.currentIndex];
+      if (!q || q.levelId !== 'factorization' || q.currentStage !== 2 || !q.correction) return;
+      const activeStep = q.steps[q.correction.unlockedIndex];
+      if (!activeStep || activeStep.key !== stepKey || !activeStep.solution) return;
+      const ss = q.correction.stepState[stepKey];
+      if (!ss || !ss.solutionAvailable) return;
+      syncFactorizationStepInputs(q);
+      ss.solutionRevealed = true;
+      q.correction.usedSolution = true;
+      renderFactorizationStage2(q, { preserveFocusId: state.activeInputId, scrollToActive: true });
+    }
+
+    function reopenFactorizationStep(stepIndex) {
+      if (!canAnswer()) return;
+      const q = state.questions[state.currentIndex];
+      if (!q || q.levelId !== 'factorization' || q.currentStage !== 2 || !q.correction) return;
+      if (!Number.isInteger(stepIndex) || stepIndex < 0 || stepIndex >= q.correction.unlockedIndex) return;
+      for (let j = stepIndex + 1; j < q.steps.length; j++) {
+        const key = q.steps[j].key;
+        delete q.correction.responses[key];
+        const ss = q.correction.stepState[key];
+        if (ss) {
+          ss.completed = false;
+          ss.status = null;
+        }
+      }
+      const targetStep = q.steps[stepIndex];
+      if (q.correction.stepState[targetStep.key]) {
+        q.correction.stepState[targetStep.key].completed = false;
+        q.correction.stepState[targetStep.key].status = null;
+      }
+      const targetSpec = q.stage2Ans[targetStep.key];
+      if (targetSpec?.type === 'cross-check') {
+        const prevPair = q.correction.responses[targetStep.key]?.cardPair;
+        q.correction.selectedCards = Array.isArray(prevPair) ? prevPair.slice() : [];
+        q.correction.crossState.pairChecked = false;
+        q.correction.crossState.lastMiddleMismatch = null;
+        q.correction.crossState.diagnostic = q.correction.selectedCards.length === 2
+          ? getFactorizationCore()?.inspectCrossCardPair(q, q.correction.selectedCards)
+          : null;
+        q.correction.responses[targetStep.key] = { cardPair: q.correction.selectedCards.slice(), middle: '' };
+      } else if (targetSpec?.type === 'card-pair') {
+        const prevPair = q.correction.responses[targetStep.key];
+        q.correction.selectedCards = Array.isArray(prevPair) ? prevPair.slice() : [];
+      }
+      q.correction.unlockedIndex = stepIndex;
+      renderFactorizationStage2(q, { autoFocus: true, scrollToActive: true });
+    }
+
+    function openFactorizationStage2(q) {
+      q.currentStage = 2;
+      q.answerState = 'answering';
+      initFactorizationStage2(q);
+      document.getElementById('stage-2-hint').innerHTML = escapeHtml(q.stage2Hint);
+      const stage2Container = document.getElementById('stage-2-container');
+      stage2Container.classList.add('open');
+      renderFactorizationStage2(q, { autoFocus: true, scrollToActive: true });
+    }
+
+    function checkFactorizationStage1(q) {
+      const core = getFactorizationCore();
+      if (!core) {
+        showFeedback(false, '因式分解模組尚未載入，請重新整理後再試。');
+        return;
+      }
+
+      if (q.subtype === 'cross') {
+        const selected = Array.isArray(q.stage1SelectedCards) ? q.stage1SelectedCards.slice() : [];
+        if (selected.length < 2) {
+          showFeedback(false, '請選出兩張因式卡片後再確認送出。');
+          return;
+        }
+        const diag = core.inspectCrossCardPair(q, selected);
+        if (!diag) {
+          showFeedback(false, '卡片選擇無效，請重新選出兩張不同的卡片。');
+          return;
+        }
+        if (diag.allOk) {
+          q.answerState = 'completed';
+          q.outcome = 'first-try';
+          state.goldenStars++;
+          state.activeInputId = null;
+          document.getElementById('stage-1-input-area').innerHTML = renderFactorizationCardGrid(q.cards, selected, 1, { locked: true, status: 'correct' });
+          showFeedback(true, '🎉 答對了！因式卡片配對完全正確！');
+          setGameTimeout(() => { nextQuestion(); }, 1500);
+          return;
+        }
+        if (!q.errorLogged) {
+          if (!state.errorLog[q.category]) state.errorLog[q.category] = 0;
+          state.errorLog[q.category]++;
+          q.errorLogged = true;
+        }
+        q.firstTry = false;
+        if (!q.enteredStage2) {
+          q.enteredStage2 = true;
+          state.guidedCount = (state.guidedCount || 0) + 1;
+        }
+        document.getElementById('stage-1-input-area').innerHTML = renderFactorizationCardGrid(q.cards, selected, 1, { locked: true, status: 'wrong' });
+        showFeedback(false, '💡 這兩張卡相乘和題目不同！我們依首項、常數與交叉項逐步檢查：');
+        q.answerState = 'opening-correction';
+        state.activeInputId = null;
+        setGameTimeout(() => { openFactorizationStage2(q); }, 600);
+        return;
+      }
+
+      const fullId = `q_${state.currentIndex}_ans`;
+      const inputEl = document.querySelector(`[data-input-id="${fullId}"]`);
+      const raw = inputEl ? (inputEl.getAttribute('data-value') || '') : '';
+      const result = core.validateFactorizationAnswer(raw, q.stage1Ans.ans);
+
+      if (result.status === 'invalid') {
+        const msgMap = {
+          incomplete: '請補完因式分解算式後再送出。',
+          syntax: '算式格式有誤，請檢查括號、符號與 x 的寫法。',
+          limit: '算式過長或數值超出範圍，請簡化後再試。',
+          'invalid-spec': '題目答案設定有誤，請重新開始。',
+        };
+        showFeedback(false, msgMap[result.reason] || '請檢查因式分解輸入格式。');
+        if (inputEl) focusInput(fullId);
+        return;
+      }
+
+      if (result.accepted) {
+        q.answerState = 'completed';
+        if (q.firstTry) {
+          q.outcome = 'first-try';
+          state.goldenStars++;
+          showFeedback(true, '🎉 答對了！完整因式分解完美過關！');
+        } else {
+          q.outcome = 'self-corrected';
+          showFeedback(true, '✅ 自行修正完成！已分解到最簡形式！');
+        }
+        if (inputEl) {
+          inputEl.classList.remove('border-indigo-400', 'border-slate-600', 'border-rose-500', 'bg-rose-950/20', 'text-rose-300', 'border-amber-400', 'bg-amber-950/20', 'text-amber-200', 'ring-1', 'ring-indigo-500/30', 'is-focused');
+          inputEl.classList.add('border-emerald-500', 'bg-emerald-950/20', 'text-emerald-300');
+          inputEl.innerHTML = renderInputDisplay(raw, false);
+        }
+        state.activeInputId = null;
+        setGameTimeout(() => { nextQuestion(); }, 1500);
+        return;
+      }
+
+      if (result.status === 'equivalent-not-factored') {
+        q.firstTry = false;
+        showFeedback('info', '算式與題目相等，但還沒有分解完全！請再檢查是否還能繼續分解。');
+        if (inputEl) {
+          focusInput(fullId);
+          inputEl.classList.remove('border-indigo-400', 'bg-indigo-950/40');
+          inputEl.classList.add('border-amber-400', 'bg-amber-950/20', 'text-amber-200', 'shake-anim');
+          setGameTimeout(() => { inputEl.classList.remove('shake-anim'); }, 300);
+        }
+        return;
+      }
+
+      // Incorrect answer -> enter Stage 2 progressive correction
+      if (!q.errorLogged) {
+        if (!state.errorLog[q.category]) state.errorLog[q.category] = 0;
+        state.errorLog[q.category]++;
+        q.errorLogged = true;
+      }
+      q.firstTry = false;
+      if (inputEl) {
+        inputEl.classList.remove('border-indigo-400', 'ring-1', 'ring-indigo-500/30', 'border-amber-400', 'bg-amber-950/20', 'text-amber-200', 'is-focused');
+        inputEl.classList.add('border-rose-500', 'bg-rose-950/20', 'text-rose-300', 'shake-anim');
+        inputEl.innerHTML = renderInputDisplay(raw, false);
+        setGameTimeout(() => { inputEl.classList.remove('shake-anim'); }, 300);
+      }
+      if (!q.enteredStage2) {
+        q.enteredStage2 = true;
+        state.guidedCount = (state.guidedCount || 0) + 1;
+      }
+      showFeedback(false, '💡 這個分解展開後和題目不同！別擔心，我們一步步拆解：');
+      q.answerState = 'opening-correction';
+      state.activeInputId = null;
+      setGameTimeout(() => { openFactorizationStage2(q); }, 600);
+    }
+
+    function advanceFactorizationHints(activeStep, ss) {
+      ss.wrongCount++;
+      const hintTotal = Array.isArray(activeStep.hints) ? activeStep.hints.length : 0;
+      ss.revealedHints = Math.min(hintTotal, ss.wrongCount);
+      if (ss.wrongCount >= hintTotal && activeStep.solution) {
+        ss.solutionAvailable = true;
+      }
+      return ss.solutionAvailable && !ss.solutionRevealed
+        ? '（已顯示全部 3 級提示，可點「查看本步解法」）'
+        : `（已解鎖第 ${ss.revealedHints} / ${hintTotal} 級提示）`;
+    }
+
+    function checkFactorizationStage2(q) {
+      const core = getFactorizationCore();
+      if (!core || !q.correction) {
+        showFeedback(false, '因式分解模組尚未載入，請重新整理後再試。');
+        return;
+      }
+      syncFactorizationStepInputs(q);
+      const unlocked = q.correction.unlockedIndex;
+      const activeStep = q.steps[unlocked];
+      if (!activeStep) return;
+      const spec = q.stage2Ans[activeStep.key];
+      const ss = q.correction.stepState[activeStep.key];
+
+      const responsesUpToActive = {};
+      for (let i = 0; i <= unlocked; i++) {
+        const k = q.steps[i].key;
+        responsesUpToActive[k] = q.correction.responses[k];
+      }
+
+      const verdict = core.checkFactorizationCorrection(q, responsesUpToActive);
+      if (verdict.status === 'complete') {
+        q.answerState = 'completed';
+        q.outcome = q.correction.usedSolution ? 'solution-guided' : 'guided';
+        const ansEl = document.querySelector(`[data-input-id="q_${state.currentIndex}_ans2"]`);
+        if (ansEl) {
+          ansEl.classList.remove('border-indigo-400', 'border-slate-600', 'border-rose-500', 'bg-rose-950/20', 'text-rose-300', 'border-amber-400', 'bg-amber-950/20', 'text-amber-200', 'ring-1', 'ring-indigo-500/30', 'is-focused');
+          ansEl.classList.add('border-emerald-500', 'bg-emerald-950/20', 'text-emerald-300');
+          ansEl.innerHTML = renderInputDisplay(ansEl.getAttribute('data-value') || '', false);
+        }
+        state.activeInputId = null;
+        showFeedback(true, '🎉 觀念完全正確，因式分解訂正完成！');
+        setGameTimeout(() => { nextQuestion(); }, 1500);
+        return;
+      }
+
+      if (verdict.key !== activeStep.key) {
+        ss.completed = true;
+        ss.status = 'correct';
+        if (spec.type === 'cross-check' && q.correction.crossState) {
+          q.correction.crossState.diagnostic = core.inspectCrossCardPair(q, q.correction.selectedCards);
+          q.correction.crossState.lastMiddleMismatch = null;
+        }
+        const nextIndex = q.steps.findIndex(step => step.key === verdict.key);
+        q.correction.unlockedIndex = nextIndex >= 0 ? nextIndex : Math.min(unlocked + 1, q.steps.length - 1);
+        const nextStep = q.steps[q.correction.unlockedIndex];
+        showFeedback(true, nextStep?.key === 'ans2'
+          ? '✅ 前置步驟完成！最後請自行輸入完整因式分解：'
+          : '✅ 這一步正確！繼續完成下一步：');
+        renderFactorizationStage2(q, { autoFocus: true, scrollToActive: true });
+        return;
+      }
+
+      // Cross-multiplication stepped diagnostic handling
+      if (spec.type === 'cross-check') {
+        const cs = q.correction.crossState;
+        const diag = verdict.diagnostic || null;
+
+        if (verdict.status === 'incomplete') {
+          showFeedback(false, '請選出兩張因式卡片後再檢驗。');
+          return;
+        }
+        if (verdict.status === 'invalid') {
+          showFeedback(false, cs.pairChecked ? '請輸入範圍內的整數交叉項係數。' : '卡片選擇無效，請重新選出兩張不同的卡片。');
+          return;
+        }
+        if (verdict.status === 'need-middle') {
+          if (!cs.pairChecked) {
+            cs.pairChecked = true;
+            cs.diagnostic = diag;
+            cs.lastMiddleMismatch = null;
+            ss.status = null;
+            showFeedback(true, '✓ 首項與常數都符合！請算出這組卡片的交叉項中間係數：');
+            renderFactorizationStage2(q, { autoFocus: true, scrollToActive: true });
+          } else {
+            showFeedback(false, '請輸入這組卡片的交叉項中間係數（整數）後再送出。');
+            focusInput(`q_${state.currentIndex}_crossMid`);
+          }
+          return;
+        }
+        if (verdict.status === 'leading-mismatch' || verdict.status === 'constant-mismatch') {
+          cs.pairChecked = false;
+          cs.diagnostic = diag;
+          cs.lastMiddleMismatch = null;
+          ss.status = 'wrong';
+          const hintNotice = advanceFactorizationHints(activeStep, ss);
+          let reasonText = '';
+          if (diag && !diag.leadingOk && !diag.constantOk) {
+            reasonText = `首項（${formatLeadSquare(diag.leadingProduct)}≠${formatLeadSquare(diag.targetLeading)}）與常數（${formatSignedDisplay(diag.constantProduct)}≠${formatSignedDisplay(diag.targetConstant)}）都不符，請調整卡片！`;
+          } else if (diag && !diag.leadingOk) {
+            reasonText = `首項乘積為 ${formatLeadSquare(diag.leadingProduct)}（題目是 ${formatLeadSquare(diag.targetLeading)}），請調整卡片！`;
+          } else if (diag) {
+            reasonText = `首項符合，但常數乘積為 ${formatSignedDisplay(diag.constantProduct)}（題目是 ${formatSignedDisplay(diag.targetConstant)}），請調整卡片！`;
+          }
+          showFeedback(false, `${reasonText}${hintNotice}`);
+          renderFactorizationStage2(q, { autoFocus: false, scrollToActive: true });
+          return;
+        }
+        if (verdict.status === 'middle-arithmetic-wrong') {
+          cs.pairChecked = true;
+          cs.diagnostic = diag;
+          ss.status = 'wrong';
+          const hintNotice = advanceFactorizationHints(activeStep, ss);
+          showFeedback(false, `這組 (${diag.cards[0]})(${diag.cards[1]}) 的交叉項係數算錯了，再核對對角線相乘的正負號！${hintNotice}`);
+          renderFactorizationStage2(q, { preserveFocusId: `q_${state.currentIndex}_crossMid`, shakeActive: true, scrollToActive: true });
+          return;
+        }
+        if (verdict.status === 'middle-mismatch') {
+          // Local arithmetic is CORRECT for the chosen pair; eliminate this pair and guide card swap.
+          cs.lastMiddleMismatch = diag;
+          cs.pairChecked = false;
+          cs.diagnostic = null;
+          q.correction.responses.crossCheck = { cardPair: q.correction.selectedCards.slice(), middle: '' };
+          ss.status = null;
+          state.activeInputId = null;
+          const hintNotice = advanceFactorizationHints(activeStep, ss);
+          const innerText = diag.innerProduct < 0 ? `(−${Math.abs(diag.innerProduct)})` : `${diag.innerProduct}`;
+          showFeedback('info', `✓ 算對了！(${diag.cards[0]})(${diag.cards[1]}) 的交叉項是 ${formatSignedDisplay(diag.outerProduct)}+${innerText}=${formatSignedDisplay(diag.middleSum)}，但題目要 ${formatSignedDisplay(diag.targetMiddle)}，請換卡再檢驗！${hintNotice}`);
+          renderFactorizationStage2(q, { autoFocus: false, scrollToActive: true });
+          return;
+        }
+      }
+
+      if (verdict.status === 'incomplete') {
+        if (spec.type === 'sum-product') {
+          showFeedback(false, '請填寫兩個整數後再一起送出。');
+          const pair = q.correction.responses[activeStep.key] || ['', ''];
+          const emptyIdx = String(pair[0] || '').trim() === '' || /^[-+−]$/.test(String(pair[0] || '').trim()) ? 0 : 1;
+          focusInput(`q_${state.currentIndex}_${activeStep.key}_${emptyIdx}`);
+        } else if (spec.type === 'card-pair') {
+          showFeedback(false, '請選出兩張因式卡片後再確認送出。');
+        } else if (spec.type === 'monomial') {
+          showFeedback(false, '請輸入兩項的最大公因式（例如 x 或 2x）後再送出。');
+          focusInput(`q_${state.currentIndex}_${activeStep.key}`);
+        } else if (spec.type === 'factorization') {
+          showFeedback(false, '請補完因式分解算式後再送出。');
+          focusInput(`q_${state.currentIndex}_${activeStep.key}`);
+        } else {
+          showFeedback(false, '請輸入整數答案後再送出。');
+          focusInput(`q_${state.currentIndex}_${activeStep.key}`);
+        }
+        return;
+      }
+
+      if (verdict.status === 'invalid') {
+        if (spec.type === 'card-pair') showFeedback(false, '卡片選擇無效，請重新選出兩張不同的卡片。');
+        else if (spec.type === 'monomial') showFeedback(false, '這一步請只填入單項最大公因式（例如 x 或 2x），不要包含括號或加減號。');
+        else if (spec.type === 'factorization') showFeedback(false, '算式格式有誤或超出範圍，請檢查括號、符號與 x 的寫法。');
+        else showFeedback(false, '請輸入範圍內的整數。');
+        return;
+      }
+
+      if (verdict.status === 'equivalent-not-factored') {
+        ss.status = 'equivalent-not-factored';
+        showFeedback('info', '算式與題目相等，但還沒有分解完全！請參考上方步驟繼續分解到最簡。');
+        renderFactorizationStage2(q, { preserveFocusId: `q_${state.currentIndex}_ans2`, shakeActive: true, scrollToActive: true });
+        return;
+      }
+
+      // Wrong answer on current Stage 2 step
+      ss.status = 'wrong';
+      if (activeStep.key === 'ans2') {
+        showFeedback(false, '展開後與題目不符，請核對上方步驟再重新輸入完整因式分解。');
+        renderFactorizationStage2(q, { preserveFocusId: `q_${state.currentIndex}_ans2`, shakeActive: true, scrollToActive: true });
+        return;
+      }
+
+      const hintNotice = advanceFactorizationHints(activeStep, ss);
+      let prefix = '這一步的數值不正確，再試試看！';
+      if (verdict.status === 'wrong-pair') {
+        prefix = '這兩張卡相乘和題目不符，請重新配對！';
+      } else if (spec.type === 'sum-product') {
+        prefix = '這兩個數的和或積不符合，請重新配對！';
+      } else if (spec.type === 'monomial') {
+        const parsed = core.parseMonomialAnswer(q.correction.responses[activeStep.key] ?? '');
+        if (parsed.ok && parsed.degree === 0) prefix = '別忘了兩項共同含有的 x！';
+        else if (parsed.ok && parsed.degree > 1) prefix = 'x 的次方過高，最多只能提出兩項共同有的 1 個 x！';
+        else if (parsed.ok && parsed.coefficient === 1 && spec.expected.coefficient > 1) prefix = '別忘了也要找出兩個係數的最大公因數！';
+        else prefix = '這個公因式還不是兩項的最大公因式，再檢查係數與 x！';
+      }
+      showFeedback(false, `${prefix}${hintNotice}`);
+      renderFactorizationStage2(q, {
+        preserveFocusId: spec.type === 'card-pair' ? null : (state.activeInputId || `q_${state.currentIndex}_${activeStep.key}${spec.type === 'sum-product' ? '_0' : ''}`),
+        shakeActive: spec.type !== 'card-pair',
+        scrollToActive: true,
+      });
+    }
+
     // --- 核心判定演算法 ---
     function checkAnswer() {
       if (!canAnswer()) return;
       const q = state.questions[state.currentIndex];
       const stage = q.currentStage;
+
+      if (q.levelId === 'factorization') {
+        if (stage === 1) checkFactorizationStage1(q);
+        else checkFactorizationStage2(q);
+        return;
+      }
       
       const expectedAns = { ... (stage === 1 ? q.stage1Ans : q.stage2Ans) };
       
@@ -2017,7 +3109,14 @@
           }
         }
         
-        if (stage === 1 && q.firstTry) state.goldenStars++;
+        if (stage === 1 && q.firstTry) {
+          q.outcome = 'first-try';
+          state.goldenStars++;
+        } else if (stage === 1) {
+          q.outcome = 'self-corrected';
+        } else {
+          q.outcome = 'guided';
+        }
         state.activeInputId = null;
         setGameTimeout(() => { nextQuestion(); }, 1500);
       } else {
@@ -2232,8 +3331,16 @@
 
     function showFeedback(isCorrect, text) {
       const banner = document.getElementById('feedback-banner');
-      banner.classList.remove('hidden', 'bg-emerald-500/20', 'text-emerald-400', 'border-emerald-500/30', 'bg-rose-500/20', 'text-rose-400', 'border-rose-500/30', 'scale-90', 'opacity-0');
-      if (isCorrect) banner.classList.add('bg-emerald-950/95', 'text-emerald-300', 'border-emerald-500', 'scale-100', 'opacity-100');
+      banner.classList.remove(
+        'hidden', 'bg-emerald-500/20', 'text-emerald-400', 'border-emerald-500/30',
+        'bg-emerald-950/95', 'text-emerald-300', 'border-emerald-500',
+        'bg-rose-500/20', 'text-rose-400', 'border-rose-500/30',
+        'bg-rose-950/95', 'text-rose-300', 'border-rose-500',
+        'bg-amber-950/95', 'text-amber-200', 'border-amber-400',
+        'scale-90', 'opacity-0'
+      );
+      if (isCorrect === true) banner.classList.add('bg-emerald-950/95', 'text-emerald-300', 'border-emerald-500', 'scale-100', 'opacity-100');
+      else if (isCorrect === 'info') banner.classList.add('bg-amber-950/95', 'text-amber-200', 'border-amber-400', 'scale-100', 'opacity-100');
       else banner.classList.add('bg-rose-950/95', 'text-rose-300', 'border-rose-500', 'scale-100', 'opacity-100');
       banner.innerHTML = text;
 
@@ -2287,22 +3394,68 @@
       document.getElementById('star-circle').setAttribute('stroke-dashoffset', 238.76 - (238.76 * perfectRate) / 100);
       document.getElementById('star-rate-text').textContent = `${perfectRate}%`;
 
-      const guidedTotal = Array.isArray(state.questions) && state.questions.length
-        ? state.questions.filter(q => q && q.enteredStage2).length
-        : (state.guidedCount || 0);
+      const questions = Array.isArray(state.questions) ? state.questions : [];
+      const isFactorization = state.difficulty === 'factorization' || questions.some(q => q && q.levelId === 'factorization');
+      const summary = {
+        total: state.qCount,
+        firstTry: 0,
+        selfCorrected: 0,
+        guided: 0,
+        solutionGuided: 0,
+      };
+      if (questions.length) {
+        for (const q of questions) {
+          if (!q) continue;
+          if (q.outcome === 'first-try') summary.firstTry++;
+          else if (q.outcome === 'self-corrected') summary.selfCorrected++;
+          else if (q.outcome === 'solution-guided') summary.solutionGuided++;
+          else if (q.outcome === 'guided' || q.enteredStage2) summary.guided++;
+        }
+      } else {
+        summary.firstTry = state.goldenStars;
+        summary.guided = state.guidedCount || 0;
+      }
+      state.reportSummary = summary;
+
       document.getElementById('report-total').textContent = `${state.qCount} 題`;
       document.getElementById('report-perfect').textContent = `${state.goldenStars} 題`;
-      document.getElementById('report-guided').textContent = `${guidedTotal} 題`;
+      document.getElementById('report-self-corrected').textContent = `${summary.selfCorrected} 題`;
+      document.getElementById('report-guided').textContent = `${summary.guided} 題`;
+      document.getElementById('report-solution-guided').textContent = `${summary.solutionGuided} 題`;
+
+      const selfRow = document.getElementById('report-self-corrected-row');
+      if (selfRow) {
+        if (isFactorization || summary.selfCorrected > 0) selfRow.classList.remove('hidden');
+        else selfRow.classList.add('hidden');
+      }
+      const solRow = document.getElementById('report-solution-row');
+      if (solRow) {
+        if (isFactorization) solRow.classList.remove('hidden');
+        else solRow.classList.add('hidden');
+      }
+      const guidedLabel = document.getElementById('report-guided-label');
+      if (guidedLabel) {
+        guidedLabel.textContent = isFactorization ? '一般訂正完成：' : '經引導答對（完成訂正）：';
+      }
       document.getElementById('diagnosis-text').textContent = getDiagnosis(perfectRate);
     }
 
     function getDiagnosis(perfectRate) {
+      if (perfectRate === 100 && state.difficulty === 'factorization') return '✨ 因式分解特訓全數首次答對！提公因式、乘法公式與十字交乘都很穩健，繼續保持這份代數直覺！';
       if (perfectRate === 100 && state.difficulty === 'radicals') return '✨ 根式特訓全數首次答對！繼續找平方因數、同類方根與乘除捷徑，建立心算直覺。';
       if (perfectRate === 100) return "✨ 完美神算手！你今天展現了驚人的專注力與精準的數感！無論是常數特徵、因數配對、去括號移項還是幾何縮放，都沒有被 any 陷阱迷惑。繼續保持，數學對你來說太簡單了！";
       let worstCategory = "", maxErrors = 0;
       for (const [cat, count] of Object.entries(state.errorLog)) { if (count > maxErrors) { maxErrors = count; worstCategory = cat; } }
 
+      if (!worstCategory && state.difficulty === 'factorization' && state.reportSummary?.selfCorrected > 0) {
+        return '💡 因式分解提醒：你的多項式方向都正確，只是有題一開始還沒分解完全。送出前多花一秒檢查括號內是否還能提公因數或再用平方差喔！';
+      }
+
       const diagnosisMap = {
+        'Factorization_Common': '💡 提公因式練習重點：先同時檢查數字係數的最大公因數與各項共有的 x，提出公因式後確認括號內已沒有共同因數。',
+        'Factorization_Formula': '💡 乘法公式與兩步驟分解重點：先看能不能提出數字公因數，再辨認平方差 a²−b²=(a+b)(a−b) 或完全平方 (x±b)² 的結構。',
+        'Factorization_Quadratic': '💡 二次式配對練習重點：找兩個整數使「和等於一次項係數、積等於常數項」；常數為負時兩數異號，常數為正時兩數同號。',
+        'Factorization_Cross': '💡 十字交乘練習重點：先確認兩張因式卡的 x 項乘積等於首項、常數積等於常數項，再檢查兩條交叉乘積的和是否等於一次項係數。',
         'Radical_Simplify': '💡 根式化簡：先找熟悉的完全平方因數，開根號後與外係數相乘；最後確認根號內已無平方因數。',
         'Radical_AddSubtract': '💡 同類方根加減：先化簡，根號內相同才合併係數；根號內的數不能直接相加減，減法還要確認正負號。',
         'Radical_MultiplyDivide': '💡 根式乘除：相乘先找共同因數配成平方；相除先簡化根號內的除法，再處理根號外係數。',
@@ -2404,13 +3557,21 @@
       document.getElementById('exit-modal').classList.add('hidden');
       if (canAnswer() && !state.activeInputId) {
         const q = state.questions[state.currentIndex];
-        const input = document.querySelector(`#stage-${q.currentStage}-input-area .math-input`);
-        if (input) focusInput(input.getAttribute('data-input-id'));
+        if (isCardBarVisible(q)) {
+          updateKeyboardForInput(null);
+        } else {
+          const input = document.querySelector(`#stage-${q.currentStage}-input-area .math-input`);
+          if (input) focusInput(input.getAttribute('data-input-id'));
+        }
       }
     }
     function confirmExit() { resetSetup(); }
 
     function startGame() {
+      if (state.difficulty === 'factorization' && !getFactorizationCore()) {
+        showFeedback(false, '因式分解模組尚未載入，請重新整理後再試。');
+        return;
+      }
       clearGameTasks();
       state.isPlaying = false;
       state.activeInputId = null;
@@ -2418,6 +3579,7 @@
       state.currentIndex = 0;
       state.goldenStars = 0;
       state.guidedCount = 0;
+      state.reportSummary = null;
       state.errorLog = {};
       state.questions = buildQuestions(state.difficulty, state.qCount);
       state.startTime = Date.now();
@@ -2435,7 +3597,8 @@
       const challengeLabels = {
         1: '挑戰 1：基礎四則 & 指數', 2: '挑戰 2：一元一次方程式',
         3: '挑戰 3：乘法公式巧算', 4: '挑戰 4：常用數感特訓',
-        pythagorean: '畢氏定理特訓', radicals: '根式運算特訓'
+        pythagorean: '畢氏定理特訓', radicals: '根式運算特訓',
+        factorization: '因式分解特訓'
       };
       document.getElementById('difficulty-label').textContent = challengeLabels[state.difficulty];
       
@@ -2445,14 +3608,32 @@
     function loadQuestion() {
       clearGameTasks();
       const q = state.questions[state.currentIndex];
+      state.activeInputId = null;
       q.answerState = 'answering';
       q.currentStage = 1; 
       q.firstTry = true;  
       q.enteredStage2 = false;
+      q.outcome = null;
+      q.correction = null;
+      q.stage1SelectedCards = [];
       if (q.errorLogged === undefined) q.errorLogged = false;
 
-      document.getElementById('topic-tag').textContent = q.tag;
+      const topicText = q.levelId === 'factorization'
+        ? `因式分解・${factorizationBandLabels[q.difficultyBand] || ''}・${q.tag}`
+        : q.tag;
+      document.getElementById('topic-tag').textContent = topicText;
       document.getElementById('main-formula').innerHTML = formatFormulaDisplay(q.formulaHtml);
+
+      const promptEl = document.getElementById('stage-1-prompt');
+      if (promptEl) {
+        if (q.levelId === 'factorization' && q.subtype === 'cross') {
+          promptEl.textContent = '請從下方 6 張因式卡片中選出 2 張，確認後再送出：';
+        } else if (q.levelId === 'factorization') {
+          promptEl.textContent = '請將上方多項式完整因式分解：';
+        } else {
+          promptEl.textContent = '請在下方空格內填入正確答案：';
+        }
+      }
 
       // 步驟四：第一階段主動態繪製直角三角形
       if (q.geomParams) {
@@ -2462,7 +3643,12 @@
         }, 20);
       }
 
-      document.getElementById('stage-1-input-area').innerHTML = parseMarkup(q.stage1Markup, state.currentIndex);
+      const stage1Area = document.getElementById('stage-1-input-area');
+      if (q.levelId === 'factorization' && q.subtype === 'cross') {
+        stage1Area.innerHTML = renderFactorizationCardGrid(q.cards, q.stage1SelectedCards, 1);
+      } else {
+        stage1Area.innerHTML = parseMarkup(q.stage1Markup, state.currentIndex);
+      }
       
       const stage2Container = document.getElementById('stage-2-container');
       stage2Container.classList.remove('open');
@@ -2471,9 +3657,15 @@
       hideFeedback();
       scrollMainToTop();
 
-      const firstInput = document.querySelector('#stage-1-input-area .math-input');
-      if (firstInput) {
-        focusInput(firstInput.getAttribute('data-input-id'));
+      if (q.levelId === 'factorization' && q.subtype === 'cross') {
+        updateKeyboardForInput(null);
+      } else {
+        const firstInput = document.querySelector('#stage-1-input-area .math-input');
+        if (firstInput) {
+          focusInput(firstInput.getAttribute('data-input-id'));
+        } else {
+          updateKeyboardForInput(null);
+        }
       }
 
       updateProgress();

@@ -22,12 +22,12 @@ PR 2 可從 `src/factorization-correction.mjs` 匯入純函式 `checkFactorizati
 
 | 步驟 | 輸入與判定 |
 | --- | --- |
+| `gcf` | 提公因式與複合公因式使用嚴格 `monomial` 規格（如 `x`、`2x`、`3x`）。漏寫 `x`、漏係數或寫成 `x²` 回傳 `incorrect`；含加減號或括號的非單項式回傳 `invalid`。 |
 | `numberPair` | 首一與正負配對共用 `sum-product` 規格。一次傳兩個整數，例如 `{ numberPair: ['6', '2'] }`。缺一格回傳 `incomplete`。和與積須同時吻合，交換順序也通過。合法但未吻合只回傳整組 `incorrect`。 |
-| `cardPair` | 傳入兩張卡片的數字索引，從 0 起算，順序任意。可沿用學生初選。兩張相異的合法卡片若配錯，回傳 `wrong-pair`，提示重新配對。此時停在選卡步。 |
-| `crossA`、`crossB` | 通過選卡後才依序檢查兩個帶符號的整數。題幹寫出兩張卡及所乘的項，點選次序不影響方向。其餘單整數步驟也以 key 傳入。 |
+| `crossCheck` | 十字交乘共用 `cross-check` 規格，傳入 `{ cardPair: [i, j], middle }`。依「首項乘積 → 常數乘積 → 交叉項中間係數」逐步檢驗，分別回傳 `leading-mismatch`、`constant-mismatch`、`need-middle`、`middle-arithmetic-wrong`、`middle-mismatch` 或通過進入 `ans2`。局部交叉項計算依**所選卡片**判定，不誤判正確計算。 |
 | `ans2` | 傳入學生輸入的完整算式。等值未分完回傳 `equivalent-not-factored`，只有完整答對會回傳 `{ key: 'ans2', status: 'complete' }`。 |
 
-缺答或尚未輸完為 `incomplete`，非法語法、數值超界、重複或越界卡片為 `invalid`。例如針對 2x²−7x−4，試選「2x−1」和「x+4」時交叉項係數 8、−1 算得正確，但兩者和為 7。此時回饋針對卡片配對。改選「2x+1」和「x−4」後，才會依序詢問這組卡的 −8、1。
+缺答或尚未輸完為 `incomplete`，非法語法、數值超界、重複或越界卡片為 `invalid`。例如針對 2x²+5x−12，初選「x+4」和「x−4」時首項為 x²（≠2x²）且常數為 −16（≠−12），立即提示調整卡片；改選「2x+3」和「x−4」時首項與常數皆符合，進入交叉項檢驗並接受正確算出的 −5，同時說明 −5≠+5 引導換卡；改選「2x−3」和「x+4」並算出 5 後，才解鎖最後一步自行輸入完整分解。
 
 ## 判定接口
 
