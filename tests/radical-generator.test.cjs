@@ -210,11 +210,11 @@ for(const correct of [true,false]) test('generated radicals exit/reopen isolates
   assert.equal(app.el('stage-2-container').classList.contains('open'),false);
 });
 
-test('six challenge cards preserve stable IDs and order; review samples stay reproducible',()=>{
+test('seven challenge cards preserve stable IDs and order; review samples stay reproducible',()=>{
   const {readFileSync}=require('node:fs');const {resolve}=require('node:path');
   const {execFileSync}=require('node:child_process');
   const html=readFileSync(resolve(__dirname,'../index.html'),'utf8');
-  assert.deepEqual([...html.matchAll(/id="btn-diff-([^"]+)"/g)].map(m=>m[1]),['1','2','3','4','pythagorean','radicals']);
+  assert.deepEqual([...html.matchAll(/id="btn-diff-([^"]+)"/g)].map(m=>m[1]),['1','2','3','4','pythagorean','radicals','factorization']);
   const result=execFileSync(process.execPath,[resolve(__dirname,'../scripts/generate-radical-samples.cjs'),'--check'],{encoding:'utf8'});
   assert.match(result,/180/);
 });

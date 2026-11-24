@@ -128,3 +128,67 @@ export function validateFactorizationAnswer(raw, spec) {
   const status = !equivalent ? 'incorrect' : parsed.complete ? 'correct' : 'equivalent-not-factored';
   return { status, equivalent, accepted: status === 'correct' };
 }
+
+// Strict single-term monomial parser for GCF steps (e.g. x, 2x, 3x).
+// Accepts optional sign, integer coefficient and x (up to degree 2) with optional * or ×,
+// so students entering "2", "x", or "2x²" get mathematical feedback instead of syntax errors,
+// while sums, parentheses, fractions or multi-term expressions fail closed as syntax errors.
+export function parseMonomialAnswer(raw) {
+  if (typeof raw !== 'string') return { ok: false, reason: 'syntax' };
+  if (raw.length > factorizationLimits.length) return { ok: false, reason: 'limit' };
+  const text = raw.trim().replaceAll('−', '-');
+  if (text === '' || text === '+' || text === '-') return { ok: false, reason: 'incomplete' };
+  if (/^[+-]?(?:\d+\s*[*×]|(?:\d+\s*[*×]?\s*)?x\^)$/.test(text)) {
+    return { ok: false, reason: 'incomplete' };
+  }
+  const intMatch = /^([+-]?)(\d+)$/.exec(text);
+  if (intMatch) {
+    const sign = intMatch[1] === '-' ? -1 : 1;
+    const magnitude = Number(intMatch[2]);
+    if (!Number.isSafeInteger(magnitude) || magnitude > factorizationLimits.coefficient) {
+      return { ok: false, reason: 'limit' };
+    }
+    return { ok: true, coefficient: magnitude === 0 ? 0 : sign * magnitude, degree: 0 };
+  }
+  const varMatch = /^([+-]?)(?:(\d+)(?:\s*[*×]\s*)?)?x(²|\^2)?$/.exec(text);
+  if (varMatch) {
+    const sign = varMatch[1] === '-' ? -1 : 1;
+    const magnitude = varMatch[2] !== undefined ? Number(varMatch[2]) : 1;
+    if (!Number.isSafeInteger(magnitude) || magnitude > factorizationLimits.coefficient) {
+      return { ok: false, reason: 'limit' };
+    }
+    const degree = varMatch[3] ? 2 : 1;
+    return { ok: true, coefficient: magnitude === 0 ? 0 : sign * magnitude, degree: magnitude === 0 ? 0 : degree };
+  }
+  const revMatch = /^([+-]?)x(²|\^2)?\s*[*×]\s*(\d+)$/.exec(text);
+  if (revMatch) {
+    const sign = revMatch[1] === '-' ? -1 : 1;
+    const magnitude = Number(revMatch[3]);
+    if (!Number.isSafeInteger(magnitude) || magnitude > factorizationLimits.coefficient) {
+      return { ok: false, reason: 'limit' };
+    }
+    const degree = revMatch[2] ? 2 : 1;
+    return { ok: true, coefficient: magnitude === 0 ? 0 : sign * magnitude, degree: magnitude === 0 ? 0 : degree };
+  }
+  return { ok: false, reason: 'syntax' };
+}
+
+export function validateMonomialAnswer(raw, spec) {
+  const invalid = reason => ({ status: 'invalid', accepted: false, reason });
+  const expected = spec?.expected;
+  if (spec?.type !== 'monomial' || !expected || typeof expected !== 'object' ||
+      !Number.isSafeInteger(expected.coefficient) ||
+      Math.abs(expected.coefficient) > factorizationLimits.coefficient ||
+      !Number.isInteger(expected.degree) || expected.degree < 0 || expected.degree > 2 ||
+      (expected.coefficient === 0 && expected.degree !== 0)) {
+    return invalid('invalid-spec');
+  }
+  const parsed = parseMonomialAnswer(raw);
+  if (!parsed.ok) return invalid(parsed.reason);
+  const exact = parsed.coefficient === expected.coefficient && parsed.degree === expected.degree;
+  return {
+    status: exact ? 'correct' : 'incorrect',
+    value: { coefficient: parsed.coefficient, degree: parsed.degree },
+    accepted: exact,
+  };
+}

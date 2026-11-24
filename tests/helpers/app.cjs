@@ -3,10 +3,27 @@ const { readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 const vm = require('node:vm');
 
+const factorizationAnswer = require('../../src/factorization-answer.mjs');
+const factorizationCorrection = require('../../src/factorization-correction.mjs');
+const factorizationQuestions = require('../../src/factorization-questions.mjs');
+
 const html = readFileSync(resolve(__dirname, '../../index.html'), 'utf8');
-const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
-  .filter((m) => !/\bsrc\s*=/.test(m[1])).map((m) => m[2]);
+const inlineScripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+  .filter((m) => !/\bsrc\s*=/.test(m[1]));
+const moduleScripts = inlineScripts
+  .filter((m) => /\btype\s*=\s*["']module["']/.test(m[1])).map((m) => m[2]);
+const scripts = inlineScripts
+  .filter((m) => !/\btype\s*=\s*["']module["']/.test(m[1])).map((m) => m[2]);
 assert.equal(scripts.length, 2, 'Revisit the harness if inline script structure changes');
+assert.equal(moduleScripts.length, 1, 'Expected single module bridge for factorization core');
+for (const path of ['./src/factorization-answer.mjs', './src/factorization-correction.mjs', './src/factorization-questions.mjs']) {
+  assert.ok(moduleScripts[0].includes(path), `Module bridge must import ${path}`);
+}
+const factorizationCore = Object.freeze({
+  ...factorizationAnswer,
+  ...factorizationCorrection,
+  ...factorizationQuestions,
+});
 
 function seededRandom(seed) {
   return () => {
@@ -81,7 +98,7 @@ function createApp(seed = 0x5eed) {
   math.random = seededRandom(seed);
   const context = vm.createContext({
     document, Math: math, tailwind: {},
-    window: { innerHeight: 800, addEventListener() {} },
+    window: { innerHeight: 800, addEventListener() {}, FactorizationCore: factorizationCore },
     Date: class extends Date { static now() { return now; } },
     setTimeout(fn, delay) { const id = ++nextId; timers.set(id, { fn, at: now + delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
