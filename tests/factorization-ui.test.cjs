@@ -596,3 +596,71 @@ test('factorization lifecycle: duplicate submit, exit modal isolation in Stage 1
   assert.equal(app.state.goldenStars, 0);
   assert.equal(app.el('stage-2-container').classList.contains('open'), false);
 });
+
+test('Stage 2 shows original polynomial & dynamic middle-term target (+/−/0) beside crossMid without competing scroll or clipped flex centering', () => {
+  const { readFileSync } = require('node:fs');
+  const { resolve } = require('node:path');
+  const html = readFileSync(resolve(__dirname, '../index.html'), 'utf8');
+  // Main scroll container must stay flex-start so overflowing Stage 2 content can always scroll back up to the top on desktop.
+  assert.doesNotMatch(html, /<main\b[^>]*\bmd:justify-center\b/);
+
+  // Verify dynamic target formatting for positive, negative, and zero middle coefficients
+  const app = startFactorization(42, 30);
+  assert.equal(app.context.formatTargetCoeff(7), '+7');
+  assert.equal(app.context.formatTargetCoeff(-7), '−7');
+  assert.equal(app.context.formatTargetCoeff(0), '0');
+
+  // Find a positive-middle cross question and a negative-middle cross question
+  let posCross = null, negCross = null;
+  for (let seed = 1; seed <= 100 && (!posCross || !negCross); seed++) {
+    const qs = startFactorization(seed, 30).state.questions;
+    if (!posCross) posCross = qs.find(q => q.subtype === 'cross' && q.stage1Ans.ans.expected[1] > 0);
+    if (!negCross) negCross = qs.find(q => q.subtype === 'cross' && q.stage1Ans.ans.expected[1] < 0);
+  }
+  assert.ok(posCross && negCross);
+
+  for (const [q, expectedSign] of [[posCross, '+'], [negCross, '−']]) {
+    const testApp = startFactorization(42, 10);
+    const clone = JSON.parse(JSON.stringify(q));
+    const targetMiddle = clone.stage1Ans.ans.expected[1];
+    const expectedTargetText = `${expectedSign}${Math.abs(targetMiddle)}`;
+    testApp.mount([clone]);
+
+    // Fail Stage 1 with a wrong pair, enter Stage 2
+    const [w0, w1] = wrongCardPair(clone);
+    testApp.context.toggleFactorCard(1, w0);
+    testApp.context.toggleFactorCard(1, w1);
+    testApp.context.checkAnswer();
+    testApp.tick(600);
+
+    const stage2Area = testApp.el('stage-2-input-area');
+    assert.match(stage2Area.innerHTML, /data-factor-origin="true"/);
+    assert.ok(stage2Area.innerHTML.includes(clone.formula), 'Stage 2 must display original formula');
+
+    // Switch to correct pair to open ③ crossMid and verify both original formula and dynamic target appear beside input
+    testApp.context.clearSelectedFactorCards();
+    testApp.context.toggleFactorCard(2, clone.correctPair[0]);
+    testApp.context.toggleFactorCard(2, clone.correctPair[1]);
+    testApp.context.checkAnswer();
+
+    assert.equal(clone.correction.crossState.pairChecked, true);
+    assert.match(stage2Area.innerHTML, /data-cross-origin-formula="true"/);
+    assert.match(stage2Area.innerHTML, /data-cross-target-middle="true"/);
+    assert.ok(stage2Area.innerHTML.includes(`目標：${expectedTargetText}`), expectedTargetText);
+    assert.ok(stage2Area.innerHTML.includes(`原題一次項係數 = <span class="font-math font-bold text-indigo-200">${expectedTargetText}</span>`));
+
+    // Verify no competing scrollIntoView from focusInput when renderFactorizationStage2 handles scrolling
+    let inputScrolls = 0;
+    const midEl = testApp.document.querySelector('[data-input-id="q_0_crossMid"]');
+    midEl.scrollIntoView = () => { inputScrolls++; };
+    testApp.tick(300);
+    assert.ok(inputScrolls <= 1, 'Expected at most one scrollIntoView without competing focus scroll');
+
+    // Tapping a card to re-select must NOT schedule any scroll timer
+    const timersBeforeToggle = testApp.pendingCallbacks().length;
+    testApp.context.toggleFactorCard(2, clone.correctPair[0]);
+    assert.equal(clone.correction.crossState.pairChecked, false);
+    assert.equal(testApp.pendingCallbacks().length, timersBeforeToggle);
+  }
+});
+
